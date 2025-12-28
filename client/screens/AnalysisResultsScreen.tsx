@@ -167,7 +167,7 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
 
       {expanded && recommendation ? (
         <View style={styles.recommendationSection}>
-          {medicine.composition || medicine.therapeuticClass ? (
+          {(medicine.composition || medicine.therapeuticClass) && medicine.verificationStatus !== "unverified" ? (
             <View
               style={[
                 styles.infoBlock,
