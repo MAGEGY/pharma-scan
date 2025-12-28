@@ -39,22 +39,21 @@ function findNearestMatch(name: string): { match: typeof EGYPTIAN_DRUGS[0] | nul
   for (const drug of EGYPTIAN_DRUGS) {
     const drugName = drug.name.toLowerCase();
     const drugArabic = drug.nameArabic.toLowerCase();
-    const activeIngredient = drug.activeIngredient.toLowerCase();
 
     if (drugName === normalizedName || drugArabic === normalizedName) {
       return { match: drug, similarity: 1.0 };
     }
 
-    if (drugName.includes(normalizedName) || normalizedName.includes(drugName)) {
-      const similarity = Math.min(normalizedName.length, drugName.length) / Math.max(normalizedName.length, drugName.length);
+    if (drugName.startsWith(normalizedName) || normalizedName.startsWith(drugName)) {
+      const similarity = 0.9;
       if (similarity > bestSimilarity) {
         bestSimilarity = similarity;
         bestMatch = drug;
       }
     }
 
-    if (activeIngredient.includes(normalizedName) || normalizedName.includes(activeIngredient)) {
-      const similarity = 0.7;
+    if (drugName.includes(normalizedName) || normalizedName.includes(drugName)) {
+      const similarity = 0.75;
       if (similarity > bestSimilarity) {
         bestSimilarity = similarity;
         bestMatch = drug;
@@ -62,7 +61,7 @@ function findNearestMatch(name: string): { match: typeof EGYPTIAN_DRUGS[0] | nul
     }
 
     const levenshteinSim = 1 - levenshteinDistance(normalizedName, drugName) / Math.max(normalizedName.length, drugName.length);
-    if (levenshteinSim > bestSimilarity && levenshteinSim >= 0.5) {
+    if (levenshteinSim > bestSimilarity && levenshteinSim >= 0.7) {
       bestSimilarity = levenshteinSim;
       bestMatch = drug;
     }
@@ -98,12 +97,25 @@ function levenshteinDistance(a: string, b: string): number {
   return matrix[b.length][a.length];
 }
 
-function findAlternatives(activeIngredient: string, excludeName: string): typeof EGYPTIAN_DRUGS {
-  return EGYPTIAN_DRUGS.filter(
-    (drug) =>
-      drug.activeIngredient.toLowerCase() === activeIngredient.toLowerCase() &&
-      drug.name.toLowerCase() !== excludeName.toLowerCase()
-  );
+function findAlternatives(activeIngredient: string | undefined, category: string | undefined, excludeName: string): typeof EGYPTIAN_DRUGS {
+  if (activeIngredient) {
+    const byIngredient = EGYPTIAN_DRUGS.filter(
+      (drug) =>
+        drug.activeIngredient.toLowerCase() === activeIngredient.toLowerCase() &&
+        drug.name.toLowerCase() !== excludeName.toLowerCase()
+    );
+    if (byIngredient.length > 0) return byIngredient;
+  }
+  
+  if (category) {
+    return EGYPTIAN_DRUGS.filter(
+      (drug) =>
+        drug.category.toLowerCase() === category.toLowerCase() &&
+        drug.name.toLowerCase() !== excludeName.toLowerCase()
+    ).slice(0, 3);
+  }
+  
+  return [];
 }
 
 const openai = new OpenAI({
@@ -308,20 +320,21 @@ Respond with valid JSON only.`,
 
         if (exactMatch) {
           verificationStatus = "verified";
-          alternatives = findAlternatives(exactMatch.activeIngredient, exactMatch.name);
+          alternatives = findAlternatives(exactMatch.activeIngredient, exactMatch.category, exactMatch.name);
         } else {
           const { match, similarity } = findNearestMatch(med.name);
-          if (match && similarity >= 0.5) {
+          if (match && similarity >= 0.7) {
             verificationStatus = "suggested";
             suggestedMatch = match;
-            alternatives = findAlternatives(match.activeIngredient, match.name);
+            alternatives = findAlternatives(match.activeIngredient, match.category, match.name);
           }
         }
 
         const activeIngredient = compMatch?.activeIngredient || exactMatch?.activeIngredient || suggestedMatch?.activeIngredient;
+        const category = compMatch?.therapeuticClass || exactMatch?.category || suggestedMatch?.category;
         
-        if (activeIngredient && alternatives.length === 0) {
-          alternatives = findAlternatives(activeIngredient, med.name);
+        if (alternatives.length === 0) {
+          alternatives = findAlternatives(activeIngredient, category, med.name);
         }
 
         return {
