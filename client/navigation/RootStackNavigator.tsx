@@ -1,12 +1,16 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import MainTabNavigator from "@/navigation/MainTabNavigator";
-import ModalScreen from "@/screens/ModalScreen";
+import CameraScreen from "@/screens/CameraScreen";
+import AnalysisResultsScreen from "@/screens/AnalysisResultsScreen";
+import DrugDetailScreen from "@/screens/DrugDetailScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type RootStackParamList = {
   Main: undefined;
-  Modal: undefined;
+  Camera: undefined;
+  AnalysisResults: { scanId: string };
+  DrugDetail: { drugId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -22,11 +26,25 @@ export default function RootStackNavigator() {
         options={{ headerShown: false }}
       />
       <Stack.Screen
-        name="Modal"
-        component={ModalScreen}
+        name="Camera"
+        component={CameraScreen}
         options={{
-          presentation: "modal",
-          headerTitle: "Modal",
+          presentation: "fullScreenModal",
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="AnalysisResults"
+        component={AnalysisResultsScreen}
+        options={{
+          headerTitle: "Analysis Results",
+        }}
+      />
+      <Stack.Screen
+        name="DrugDetail"
+        component={DrugDetailScreen}
+        options={{
+          headerTitle: "Drug Details",
         }}
       />
     </Stack.Navigator>

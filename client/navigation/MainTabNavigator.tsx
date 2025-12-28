@@ -2,67 +2,139 @@ import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { Platform, StyleSheet } from "react-native";
-import HomeStackNavigator from "@/navigation/HomeStackNavigator";
-import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
+import { Platform, StyleSheet, View, Pressable } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import HomeScreen from "@/screens/HomeScreen";
+import HistoryScreen from "@/screens/HistoryScreen";
+import LibraryScreen from "@/screens/LibraryScreen";
+import ProfileScreen from "@/screens/ProfileScreen";
 import { useTheme } from "@/hooks/useTheme";
+import { useScreenOptions } from "@/hooks/useScreenOptions";
+import { Spacing, BorderRadius, Shadows } from "@/constants/theme";
+import { HeaderTitle } from "@/components/HeaderTitle";
 
 export type MainTabParamList = {
-  HomeTab: undefined;
-  ProfileTab: undefined;
+  Home: undefined;
+  History: undefined;
+  Library: undefined;
+  Profile: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-export default function MainTabNavigator() {
-  const { theme, isDark } = useTheme();
+interface FABProps {
+  onPress: () => void;
+}
+
+function FloatingActionButton({ onPress }: FABProps) {
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
-    <Tab.Navigator
-      initialRouteName="HomeTab"
-      screenOptions={{
-        tabBarActiveTintColor: theme.tabIconSelected,
-        tabBarInactiveTintColor: theme.tabIconDefault,
-        tabBarStyle: {
-          position: "absolute",
-          backgroundColor: Platform.select({
-            ios: "transparent",
-            android: theme.backgroundRoot,
-          }),
-          borderTopWidth: 0,
-          elevation: 0,
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.fab,
+        {
+          backgroundColor: theme.primary,
+          bottom: 70 + insets.bottom,
+          transform: [{ scale: pressed ? 0.95 : 1 }],
         },
-        tabBarBackground: () =>
-          Platform.OS === "ios" ? (
-            <BlurView
-              intensity={100}
-              tint={isDark ? "dark" : "light"}
-              style={StyleSheet.absoluteFill}
-            />
-          ) : null,
-        headerShown: false,
-      }}
+        Shadows.lg,
+      ]}
     >
-      <Tab.Screen
-        name="HomeTab"
-        component={HomeStackNavigator}
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="home" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="ProfileTab"
-        component={ProfileStackNavigator}
-        options={{
-          title: "Profile",
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="user" size={size} color={color} />
-          ),
-        }}
-      />
-    </Tab.Navigator>
+      <Feather name="camera" size={24} color="#FFFFFF" />
+    </Pressable>
   );
 }
+
+export default function MainTabNavigator({ navigation }: any) {
+  const { theme, isDark } = useTheme();
+  const screenOptions = useScreenOptions({ transparent: false });
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.backgroundRoot }}>
+      <Tab.Navigator
+        initialRouteName="Home"
+        screenOptions={{
+          ...screenOptions,
+          tabBarActiveTintColor: theme.primary,
+          tabBarInactiveTintColor: theme.tabIconDefault,
+          tabBarStyle: {
+            position: "absolute",
+            backgroundColor: Platform.select({
+              ios: "transparent",
+              android: theme.backgroundDefault,
+            }),
+            borderTopWidth: 0,
+            elevation: 0,
+          },
+          tabBarBackground: () =>
+            Platform.OS === "ios" ? (
+              <BlurView
+                intensity={100}
+                tint={isDark ? "dark" : "light"}
+                style={StyleSheet.absoluteFill}
+              />
+            ) : null,
+        }}
+      >
+        <Tab.Screen
+          name="Home"
+          component={HomeScreen}
+          options={{
+            headerTitle: () => <HeaderTitle />,
+            tabBarIcon: ({ color, size }) => (
+              <Feather name="home" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="History"
+          component={HistoryScreen}
+          options={{
+            headerTitle: "History",
+            tabBarIcon: ({ color, size }) => (
+              <Feather name="clock" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Library"
+          component={LibraryScreen}
+          options={{
+            headerTitle: "Drug Library",
+            tabBarIcon: ({ color, size }) => (
+              <Feather name="book" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Profile"
+          component={ProfileScreen}
+          options={{
+            headerTitle: "Profile",
+            tabBarIcon: ({ color, size }) => (
+              <Feather name="user" size={size} color={color} />
+            ),
+          }}
+        />
+      </Tab.Navigator>
+      <FloatingActionButton
+        onPress={() => navigation.navigate("Camera")}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  fab: {
+    position: "absolute",
+    right: Spacing.xl,
+    width: Spacing.fabSize,
+    height: Spacing.fabSize,
+    borderRadius: BorderRadius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
