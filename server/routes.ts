@@ -19,13 +19,13 @@ function generatePharmacyLinks(medicineName: string): PharmacyResult[] {
       logoColor: "#0D9488",
     },
     {
-      pharmacy: "Seif (Google)",
-      searchUrl: `https://www.google.com/search?q=${encodedName}+site:seif-online.com`,
+      pharmacy: "Seif",
+      searchUrl: `https://www.seif-online.com/en/products?search=${encodedName}`,
       logoColor: "#E31837",
     },
     {
-      pharmacy: "Tarshouby (Google)",
-      searchUrl: `https://www.google.com/search?q=${encodedName}+site:tarshouby.com`,
+      pharmacy: "Tarshouby",
+      searchUrl: `https://alabdellatif-tarshouby.com/en/products?search=${encodedName}`,
       logoColor: "#1E3A8A",
     },
   ];
