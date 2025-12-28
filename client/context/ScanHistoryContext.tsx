@@ -15,6 +15,9 @@ export interface Medicine {
   nameArabic?: string;
   confidence: number;
   activeIngredient?: string;
+  composition?: string;
+  therapeuticClass?: string;
+  manufacturer?: string;
 }
 
 export interface Recommendation {

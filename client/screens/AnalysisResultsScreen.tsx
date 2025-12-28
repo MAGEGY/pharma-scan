@@ -138,6 +138,50 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
 
       {expanded && recommendation ? (
         <View style={styles.recommendationSection}>
+          {medicine.composition || medicine.therapeuticClass ? (
+            <View
+              style={[
+                styles.infoBlock,
+                styles.compositionBlock,
+                { backgroundColor: `${theme.primary}10` },
+              ]}
+            >
+              <View style={styles.infoHeader}>
+                <Feather name="database" size={16} color={theme.primary} />
+                <ThemedText
+                  type="small"
+                  style={{ fontWeight: "600", color: theme.primary }}
+                >
+                  Drug Composition (Dalil Aldawaa)
+                </ThemedText>
+              </View>
+              {medicine.composition ? (
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.text, marginTop: Spacing.xs }}
+                >
+                  {medicine.composition}
+                </ThemedText>
+              ) : null}
+              {medicine.therapeuticClass ? (
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.textSecondary, marginTop: Spacing.xs }}
+                >
+                  Class: {medicine.therapeuticClass}
+                </ThemedText>
+              ) : null}
+              {medicine.manufacturer ? (
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.textSecondary, marginTop: Spacing.xs }}
+                >
+                  Manufacturer: {medicine.manufacturer}
+                </ThemedText>
+              ) : null}
+            </View>
+          ) : null}
+
           {recommendation.dosing ? (
             <View style={styles.infoBlock}>
               <View style={styles.infoHeader}>
@@ -501,6 +545,10 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+  },
+  compositionBlock: {
+    padding: Spacing.md,
     borderRadius: BorderRadius.sm,
   },
 });

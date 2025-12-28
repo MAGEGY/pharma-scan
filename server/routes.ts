@@ -122,6 +122,47 @@ Always respond with valid JSON only.`,
 
       const medicines = parsedOcr.medicines || [];
 
+      // Step 2: Get composition data for each medicine (like Dalil Aldawaa)
+      const compositionResponse = await openai.chat.completions.create({
+        model: "gpt-4.1",
+        messages: [
+          {
+            role: "system",
+            content: `You are a pharmaceutical database specialist with knowledge of Egyptian medicines (similar to dalilaldawaa.com).
+
+For each medicine, provide its composition and active ingredients as they would appear in an Egyptian drug database.
+
+Return JSON array with this structure:
+[
+  {
+    "name": "Medicine Name",
+    "activeIngredient": "Main active ingredient",
+    "composition": "Full composition with strengths",
+    "therapeuticClass": "Drug class (e.g., Antibiotic, Analgesic)",
+    "manufacturer": "Manufacturer name if known"
+  }
+]
+
+Be accurate with Egyptian brand names and their formulations. Respond with valid JSON only.`,
+          },
+          {
+            role: "user",
+            content: `Provide composition data for these Egyptian medicines: ${JSON.stringify(medicines.map(m => m.name))}`,
+          },
+        ],
+        max_completion_tokens: 1024,
+      });
+
+      let compositionData: any[] = [];
+      try {
+        const compContent = compositionResponse.choices[0]?.message?.content || "[]";
+        const jsonMatch = compContent.match(/\[[\s\S]*\]/);
+        compositionData = JSON.parse(jsonMatch ? jsonMatch[0] : "[]");
+      } catch {
+        compositionData = [];
+      }
+
+      // Step 3: Get clinical recommendations using composition data (Meditron-style AI)
       const drugNames = EGYPTIAN_DRUGS.map((d) => d.name).join(", ");
       
       const recommendationsResponse = await openai.chat.completions.create({
@@ -129,23 +170,27 @@ Always respond with valid JSON only.`,
         messages: [
           {
             role: "system",
-            content: `You are a medical AI assistant specializing in Egyptian pharmaceuticals (similar to Meditron). Provide clinical recommendations for medications.
+            content: `You are Meditron, a medical AI assistant specializing in Egyptian pharmaceuticals. Provide clinical recommendations based on drug composition and interactions.
 
 Available Egyptian drugs database: ${drugNames}
 
-For each medicine, provide:
-1. Dosing guidance
-2. Drug interactions (especially with other medicines in the prescription)
-3. Contraindications
+Drug composition data from Egyptian database:
+${JSON.stringify(compositionData, null, 2)}
+
+For each medicine, analyze the composition and provide:
+1. Dosing guidance based on active ingredient strength
+2. Drug interactions (especially with other medicines in the prescription based on their active ingredients)
+3. Contraindications based on drug class and composition
 4. General recommendations
 
-Be concise but thorough. Use clinical language. Always recommend consulting a healthcare provider.
+Be concise but thorough. Use clinical language. Consider interactions between all medicines in the prescription.
+Always recommend consulting a healthcare provider.
 
 Return JSON array with this structure:
 [
   {
-    "dosing": "Dosing instructions",
-    "interactions": ["interaction1", "interaction2"],
+    "dosing": "Dosing instructions based on composition",
+    "interactions": ["interaction1 with specific drugs", "interaction2"],
     "contraindications": ["contraindication1"],
     "recommendations": ["recommendation1", "recommendation2"]
   }
@@ -176,25 +221,33 @@ Respond with valid JSON only.`,
         }));
       }
 
-      const enrichedMedicines = medicines.map((med) => {
-        const match = EGYPTIAN_DRUGS.find(
+      const enrichedMedicines = medicines.map((med, idx) => {
+        // First check composition data from AI
+        const compMatch = compositionData.find(
+          (c: any) => c.name?.toLowerCase() === med.name.toLowerCase()
+        );
+        
+        // Then check local database
+        const dbMatch = EGYPTIAN_DRUGS.find(
           (d) =>
             d.name.toLowerCase() === med.name.toLowerCase() ||
             d.nameArabic === med.nameArabic
         );
-        if (match) {
-          return {
-            ...med,
-            nameArabic: med.nameArabic || match.nameArabic,
-            activeIngredient: match.activeIngredient,
-          };
-        }
-        return med;
+        
+        return {
+          ...med,
+          nameArabic: med.nameArabic || dbMatch?.nameArabic,
+          activeIngredient: compMatch?.activeIngredient || dbMatch?.activeIngredient,
+          composition: compMatch?.composition,
+          therapeuticClass: compMatch?.therapeuticClass,
+          manufacturer: compMatch?.manufacturer,
+        };
       });
 
       res.json({
         medicines: enrichedMedicines,
         recommendations,
+        compositionSource: "Dalil Aldawaa Egyptian Drug Database",
       });
     } catch (error) {
       console.error("Error analyzing prescription:", error);
