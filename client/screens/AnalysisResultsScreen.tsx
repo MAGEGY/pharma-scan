@@ -91,7 +91,7 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
       onPress={() => setExpanded(!expanded)}
       style={[
         styles.medicineCard,
-        hasWarnings && { borderLeftWidth: 3, borderLeftColor: theme.warning },
+        hasWarnings ? { borderLeftWidth: 3, borderLeftColor: theme.warning } : undefined,
       ]}
     >
       <View style={styles.medicineHeader}>
