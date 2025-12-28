@@ -14,6 +14,11 @@ function generatePharmacyLinks(medicineName: string): PharmacyResult[] {
   
   return [
     {
+      pharmacy: "Dalil Aldawaa",
+      searchUrl: `https://dalilaldawaa.com/ar/drug-search?kw=${encodedName}`,
+      logoColor: "#0D9488",
+    },
+    {
       pharmacy: "Seif Pharmacy",
       searchUrl: `https://seif-online.com/en/?s=${encodedName}&post_type=product`,
       logoColor: "#E31837",
