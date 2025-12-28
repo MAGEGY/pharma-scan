@@ -10,6 +10,19 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const STORAGE_KEY = "@medscan_history";
 
+export interface AlternativeMedicine {
+  name: string;
+  nameArabic?: string;
+  activeIngredient?: string;
+  dosing?: string;
+}
+
+export interface SuggestedMatch {
+  name: string;
+  nameArabic?: string;
+  activeIngredient?: string;
+}
+
 export interface Medicine {
   name: string;
   nameArabic?: string;
@@ -18,6 +31,9 @@ export interface Medicine {
   composition?: string;
   therapeuticClass?: string;
   manufacturer?: string;
+  verificationStatus?: "verified" | "suggested" | "unverified";
+  suggestedMatch?: SuggestedMatch | null;
+  alternatives?: AlternativeMedicine[];
 }
 
 export interface Recommendation {

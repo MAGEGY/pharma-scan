@@ -15,25 +15,95 @@ function generatePharmacyLinks(medicineName: string): PharmacyResult[] {
   return [
     {
       pharmacy: "Dalil Aldawaa",
-      searchUrl: `https://dalilaldawaa.com/ar/drug-search?kw=${encodedName}`,
+      searchUrl: `https://dalilaldwaa.com/search?q=${encodedName}`,
       logoColor: "#0D9488",
     },
     {
-      pharmacy: "Seif Pharmacy",
-      searchUrl: `https://seif-online.com/en/?s=${encodedName}&post_type=product`,
+      pharmacy: "Seif (Google)",
+      searchUrl: `https://www.google.com/search?q=${encodedName}+site:seif-online.com`,
       logoColor: "#E31837",
     },
     {
-      pharmacy: "El Ezaby Pharmacy",
-      searchUrl: `https://www.google.com/search?q=${encodedName}+site:elezabypharmacy.com`,
-      logoColor: "#00A651",
-    },
-    {
-      pharmacy: "Tarshouby Pharmacy",
-      searchUrl: `https://alabdellatif-tarshouby.com/en/?s=${encodedName}`,
+      pharmacy: "Tarshouby (Google)",
+      searchUrl: `https://www.google.com/search?q=${encodedName}+site:tarshouby.com`,
       logoColor: "#1E3A8A",
     },
   ];
+}
+
+function findNearestMatch(name: string): { match: typeof EGYPTIAN_DRUGS[0] | null; similarity: number } {
+  const normalizedName = name.toLowerCase().trim();
+  let bestMatch: typeof EGYPTIAN_DRUGS[0] | null = null;
+  let bestSimilarity = 0;
+
+  for (const drug of EGYPTIAN_DRUGS) {
+    const drugName = drug.name.toLowerCase();
+    const drugArabic = drug.nameArabic.toLowerCase();
+    const activeIngredient = drug.activeIngredient.toLowerCase();
+
+    if (drugName === normalizedName || drugArabic === normalizedName) {
+      return { match: drug, similarity: 1.0 };
+    }
+
+    if (drugName.includes(normalizedName) || normalizedName.includes(drugName)) {
+      const similarity = Math.min(normalizedName.length, drugName.length) / Math.max(normalizedName.length, drugName.length);
+      if (similarity > bestSimilarity) {
+        bestSimilarity = similarity;
+        bestMatch = drug;
+      }
+    }
+
+    if (activeIngredient.includes(normalizedName) || normalizedName.includes(activeIngredient)) {
+      const similarity = 0.7;
+      if (similarity > bestSimilarity) {
+        bestSimilarity = similarity;
+        bestMatch = drug;
+      }
+    }
+
+    const levenshteinSim = 1 - levenshteinDistance(normalizedName, drugName) / Math.max(normalizedName.length, drugName.length);
+    if (levenshteinSim > bestSimilarity && levenshteinSim >= 0.5) {
+      bestSimilarity = levenshteinSim;
+      bestMatch = drug;
+    }
+  }
+
+  return { match: bestMatch, similarity: bestSimilarity };
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  const matrix: number[][] = [];
+
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+
+  return matrix[b.length][a.length];
+}
+
+function findAlternatives(activeIngredient: string, excludeName: string): typeof EGYPTIAN_DRUGS {
+  return EGYPTIAN_DRUGS.filter(
+    (drug) =>
+      drug.activeIngredient.toLowerCase() === activeIngredient.toLowerCase() &&
+      drug.name.toLowerCase() !== excludeName.toLowerCase()
+  );
 }
 
 const openai = new OpenAI({
@@ -222,25 +292,57 @@ Respond with valid JSON only.`,
       }
 
       const enrichedMedicines = medicines.map((med, idx) => {
-        // First check composition data from AI
         const compMatch = compositionData.find(
           (c: any) => c.name?.toLowerCase() === med.name.toLowerCase()
         );
         
-        // Then check local database
-        const dbMatch = EGYPTIAN_DRUGS.find(
+        const exactMatch = EGYPTIAN_DRUGS.find(
           (d) =>
             d.name.toLowerCase() === med.name.toLowerCase() ||
             d.nameArabic === med.nameArabic
         );
+
+        let verificationStatus: "verified" | "suggested" | "unverified" = "unverified";
+        let suggestedMatch: typeof EGYPTIAN_DRUGS[0] | null = null;
+        let alternatives: typeof EGYPTIAN_DRUGS = [];
+
+        if (exactMatch) {
+          verificationStatus = "verified";
+          alternatives = findAlternatives(exactMatch.activeIngredient, exactMatch.name);
+        } else {
+          const { match, similarity } = findNearestMatch(med.name);
+          if (match && similarity >= 0.5) {
+            verificationStatus = "suggested";
+            suggestedMatch = match;
+            alternatives = findAlternatives(match.activeIngredient, match.name);
+          }
+        }
+
+        const activeIngredient = compMatch?.activeIngredient || exactMatch?.activeIngredient || suggestedMatch?.activeIngredient;
         
+        if (activeIngredient && alternatives.length === 0) {
+          alternatives = findAlternatives(activeIngredient, med.name);
+        }
+
         return {
           ...med,
-          nameArabic: med.nameArabic || dbMatch?.nameArabic,
-          activeIngredient: compMatch?.activeIngredient || dbMatch?.activeIngredient,
+          nameArabic: med.nameArabic || exactMatch?.nameArabic || suggestedMatch?.nameArabic,
+          activeIngredient,
           composition: compMatch?.composition,
-          therapeuticClass: compMatch?.therapeuticClass,
+          therapeuticClass: compMatch?.therapeuticClass || exactMatch?.category || suggestedMatch?.category,
           manufacturer: compMatch?.manufacturer,
+          verificationStatus,
+          suggestedMatch: suggestedMatch ? {
+            name: suggestedMatch.name,
+            nameArabic: suggestedMatch.nameArabic,
+            activeIngredient: suggestedMatch.activeIngredient,
+          } : null,
+          alternatives: alternatives.map((alt) => ({
+            name: alt.name,
+            nameArabic: alt.nameArabic,
+            activeIngredient: alt.activeIngredient,
+            dosing: alt.dosing,
+          })),
         };
       });
 

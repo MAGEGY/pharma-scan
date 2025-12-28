@@ -46,22 +46,17 @@ function generatePharmacyLinks(medicineName: string): PharmacyLink[] {
   return [
     {
       pharmacy: "Dalil Aldawaa",
-      searchUrl: `https://dalilaldawaa.com/ar/drug-search?kw=${encodedName}`,
+      searchUrl: `https://dalilaldwaa.com/search?q=${encodedName}`,
       logoColor: "#0D9488",
     },
     {
-      pharmacy: "Seif",
-      searchUrl: `https://seif-online.com/en/?s=${encodedName}&post_type=product`,
+      pharmacy: "Seif (Google)",
+      searchUrl: `https://www.google.com/search?q=${encodedName}+site:seif-online.com`,
       logoColor: "#E31837",
     },
     {
-      pharmacy: "El Ezaby",
-      searchUrl: `https://www.google.com/search?q=${encodedName}+site:elezabypharmacy.com`,
-      logoColor: "#00A651",
-    },
-    {
-      pharmacy: "Tarshouby",
-      searchUrl: `https://alabdellatif-tarshouby.com/en/?s=${encodedName}`,
+      pharmacy: "Tarshouby (Google)",
+      searchUrl: `https://www.google.com/search?q=${encodedName}+site:tarshouby.com`,
       logoColor: "#1E3A8A",
     },
   ];
@@ -90,24 +85,58 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
     (recommendation?.interactions && recommendation.interactions.length > 0) ||
     (recommendation?.contraindications && recommendation.contraindications.length > 0);
 
+  const cardStyle = hasWarnings
+    ? { ...styles.medicineCard, borderLeftWidth: 3, borderLeftColor: theme.warning }
+    : styles.medicineCard;
+
   return (
     <Card
       elevation={1}
       onPress={() => setExpanded(!expanded)}
-      style={[
-        styles.medicineCard,
-        hasWarnings ? { borderLeftWidth: 3, borderLeftColor: theme.warning } : undefined,
-      ]}
+      style={cardStyle}
     >
       <View style={styles.medicineHeader}>
         <View style={styles.medicineInfo}>
-          <ThemedText type="body" style={{ fontWeight: "600" }}>
-            {medicine.name}
-          </ThemedText>
+          <View style={styles.nameRow}>
+            <ThemedText type="body" style={{ fontWeight: "600" }}>
+              {medicine.name}
+            </ThemedText>
+            {medicine.verificationStatus === "verified" ? (
+              <View style={[styles.verificationBadge, { backgroundColor: theme.success }]}>
+                <Feather name="check-circle" size={12} color="#FFFFFF" />
+                <ThemedText type="small" style={{ color: "#FFFFFF", fontSize: 10, marginLeft: 2 }}>
+                  Verified
+                </ThemedText>
+              </View>
+            ) : medicine.verificationStatus === "suggested" ? (
+              <View style={[styles.verificationBadge, { backgroundColor: theme.warning }]}>
+                <Feather name="alert-circle" size={12} color="#FFFFFF" />
+                <ThemedText type="small" style={{ color: "#FFFFFF", fontSize: 10, marginLeft: 2 }}>
+                  Suggested
+                </ThemedText>
+              </View>
+            ) : (
+              <View style={[styles.verificationBadge, { backgroundColor: theme.danger }]}>
+                <Feather name="help-circle" size={12} color="#FFFFFF" />
+                <ThemedText type="small" style={{ color: "#FFFFFF", fontSize: 10, marginLeft: 2 }}>
+                  Unverified
+                </ThemedText>
+              </View>
+            )}
+          </View>
           {medicine.nameArabic ? (
             <ThemedText type="small" style={{ color: theme.textSecondary }}>
               {medicine.nameArabic}
             </ThemedText>
+          ) : null}
+          {medicine.verificationStatus === "suggested" && medicine.suggestedMatch ? (
+            <View style={[styles.suggestedMatchAlert, { backgroundColor: `${theme.warning}15` }]}>
+              <Feather name="info" size={14} color={theme.warning} />
+              <ThemedText type="small" style={{ color: theme.warning, flex: 1, marginLeft: Spacing.xs }}>
+                Not found. Did you mean: {medicine.suggestedMatch.name}
+                {medicine.suggestedMatch.nameArabic ? ` (${medicine.suggestedMatch.nameArabic})` : ""}?
+              </ThemedText>
+            </View>
           ) : null}
         </View>
         <View style={styles.confidenceContainer}>
@@ -304,6 +333,42 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
               ))}
             </View>
           </View>
+
+          {medicine.alternatives && medicine.alternatives.length > 0 ? (
+            <View
+              style={[
+                styles.infoBlock,
+                styles.alternativesBlock,
+                { backgroundColor: `${theme.info}10` },
+              ]}
+            >
+              <View style={styles.infoHeader}>
+                <Feather name="shuffle" size={16} color={theme.info} />
+                <ThemedText
+                  type="small"
+                  style={{ fontWeight: "600", color: theme.info }}
+                >
+                  Alternative Medicines (Same Active Ingredient)
+                </ThemedText>
+              </View>
+              {medicine.alternatives.map((alt, idx) => (
+                <View key={idx} style={styles.alternativeItem}>
+                  <ThemedText type="small" style={{ fontWeight: "600" }}>
+                    {alt.name}
+                    {alt.nameArabic ? ` (${alt.nameArabic})` : ""}
+                  </ThemedText>
+                  {alt.dosing ? (
+                    <ThemedText
+                      type="small"
+                      style={{ color: theme.textSecondary, marginTop: 2 }}
+                    >
+                      Dosing: {alt.dosing}
+                    </ThemedText>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
       ) : null}
     </Card>
@@ -550,5 +615,36 @@ const styles = StyleSheet.create({
   compositionBlock: {
     padding: Spacing.md,
     borderRadius: BorderRadius.sm,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    flexWrap: "wrap",
+  },
+  verificationBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+  },
+  suggestedMatchAlert: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.xs,
+    marginTop: Spacing.xs,
+  },
+  alternativesBlock: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    marginTop: Spacing.md,
+  },
+  alternativeItem: {
+    marginTop: Spacing.sm,
+    paddingLeft: Spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: "rgba(0,0,0,0.1)",
   },
 });
