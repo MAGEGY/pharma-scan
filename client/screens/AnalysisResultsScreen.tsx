@@ -45,11 +45,6 @@ function generatePharmacyLinks(medicineName: string): PharmacyLink[] {
   
   return [
     {
-      pharmacy: "Dalil Aldawaa",
-      searchUrl: `https://dalilaldwaa.com/search?q=${encodedName}`,
-      logoColor: "#0D9488",
-    },
-    {
       pharmacy: "Seif",
       searchUrl: `https://www.seif-online.com/en/products?search=${encodedName}`,
       logoColor: "#E31837",
@@ -59,6 +54,11 @@ function generatePharmacyLinks(medicineName: string): PharmacyLink[] {
       searchUrl: `https://alabdellatif-tarshouby.com/en/products?search=${encodedName}`,
       logoColor: "#1E3A8A",
     },
+    {
+      pharmacy: "Google",
+      searchUrl: `https://www.google.com/search?q=${encodedName}+Egypt+pharmacy+price`,
+      logoColor: "#4285F4",
+    },
   ];
 }
 
@@ -66,6 +66,9 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
   const { theme } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const pharmacyLinks = generatePharmacyLinks(medicine.name);
+
+  const isVerifiedOrSuggested = medicine.verificationStatus === "verified" || medicine.verificationStatus === "suggested";
+  const hasComposition = medicine.composition || medicine.therapeuticClass || medicine.activeIngredient;
 
   const handlePharmacyPress = async (url: string) => {
     try {
@@ -85,83 +88,73 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
     (recommendation?.interactions && recommendation.interactions.length > 0) ||
     (recommendation?.contraindications && recommendation.contraindications.length > 0);
 
-  const cardStyle = hasWarnings
-    ? { ...styles.medicineCard, borderLeftWidth: 3, borderLeftColor: theme.warning }
-    : styles.medicineCard;
-
   return (
     <Card
       elevation={1}
       onPress={() => setExpanded(!expanded)}
-      style={cardStyle}
+      style={styles.medicineCard}
     >
       <View style={styles.medicineHeader}>
         <View style={styles.medicineInfo}>
-          <View style={styles.nameRow}>
-            <ThemedText type="body" style={{ fontWeight: "600" }}>
-              {medicine.name}
-            </ThemedText>
-            {medicine.verificationStatus === "verified" ? (
-              <View style={[styles.verificationBadge, { backgroundColor: theme.success }]}>
-                <Feather name="check-circle" size={12} color="#FFFFFF" />
-                <ThemedText type="small" style={{ color: "#FFFFFF", fontSize: 10, marginLeft: 2 }}>
-                  Verified
-                </ThemedText>
-              </View>
-            ) : medicine.verificationStatus === "suggested" ? (
-              <View style={[styles.verificationBadge, { backgroundColor: theme.warning }]}>
-                <Feather name="alert-circle" size={12} color="#FFFFFF" />
-                <ThemedText type="small" style={{ color: "#FFFFFF", fontSize: 10, marginLeft: 2 }}>
-                  Suggested
-                </ThemedText>
-              </View>
-            ) : (
-              <View style={[styles.verificationBadge, { backgroundColor: theme.danger }]}>
-                <Feather name="help-circle" size={12} color="#FFFFFF" />
-                <ThemedText type="small" style={{ color: "#FFFFFF", fontSize: 10, marginLeft: 2 }}>
-                  Unverified
-                </ThemedText>
-              </View>
-            )}
-          </View>
+          <ThemedText type="body" style={{ fontWeight: "700", fontSize: 18 }}>
+            {medicine.name}
+          </ThemedText>
           {medicine.nameArabic ? (
-            <ThemedText type="small" style={{ color: theme.textSecondary }}>
+            <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: 2 }}>
               {medicine.nameArabic}
             </ThemedText>
           ) : null}
-          {medicine.verificationStatus === "suggested" && medicine.suggestedMatch ? (
-            <View style={[styles.suggestedMatchAlert, { backgroundColor: `${theme.warning}15` }]}>
-              <Feather name="info" size={14} color={theme.warning} />
-              <ThemedText type="small" style={{ color: theme.warning, flex: 1, marginLeft: Spacing.xs }}>
-                Not found. Did you mean: {medicine.suggestedMatch.name}
-                {medicine.suggestedMatch.nameArabic ? ` (${medicine.suggestedMatch.nameArabic})` : ""}?
-              </ThemedText>
-            </View>
+          {hasComposition && isVerifiedOrSuggested ? (
+            <ThemedText type="small" style={{ color: theme.textSecondary, marginTop: 4 }}>
+              {medicine.activeIngredient || medicine.therapeuticClass}
+            </ThemedText>
           ) : null}
         </View>
-        <View style={styles.confidenceContainer}>
-          <View
-            style={[
-              styles.confidenceBadge,
-              {
-                backgroundColor:
-                  medicine.confidence >= 80
-                    ? theme.success
-                    : medicine.confidence >= 60
-                    ? theme.warning
-                    : theme.danger,
-              },
-            ]}
-          >
-            <ThemedText type="small" style={{ color: "#FFFFFF" }}>
-              {medicine.confidence}%
+        <Feather
+          name={expanded ? "chevron-up" : "chevron-down"}
+          size={20}
+          color={theme.textSecondary}
+        />
+      </View>
+
+      <View style={styles.statusRow}>
+        {isVerifiedOrSuggested ? (
+          <View style={[styles.availableBadge, { borderColor: theme.success }]}>
+            <ThemedText type="small" style={{ color: theme.success, fontWeight: "600" }}>
+              Available
             </ThemedText>
           </View>
-          <Feather
-            name={expanded ? "chevron-up" : "chevron-down"}
-            size={20}
-            color={theme.textSecondary}
-          />
+        ) : (
+          <View style={[styles.availableBadge, { borderColor: theme.warning }]}>
+            <ThemedText type="small" style={{ color: theme.warning, fontWeight: "600" }}>
+              Not Found
+            </ThemedText>
+          </View>
+        )}
+        {hasWarnings ? (
+          <View style={[styles.availableBadge, { borderColor: theme.danger }]}>
+            <Feather name="alert-triangle" size={12} color={theme.danger} />
+            <ThemedText type="small" style={{ color: theme.danger, fontWeight: "600", marginLeft: 4 }}>
+              Warnings
+            </ThemedText>
+          </View>
+        ) : null}
+        <View
+          style={[
+            styles.confidenceBadge,
+            {
+              backgroundColor:
+                medicine.confidence >= 80
+                  ? theme.success
+                  : medicine.confidence >= 60
+                  ? theme.warning
+                  : theme.danger,
+            },
+          ]}
+        >
+          <ThemedText type="small" style={{ color: "#FFFFFF" }}>
+            {medicine.confidence}%
+          </ThemedText>
         </View>
       </View>
 
@@ -305,34 +298,36 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
             </View>
           ) : null}
 
-          <View style={styles.pharmacySection}>
-            <View style={styles.infoHeader}>
-              <Feather name="shopping-bag" size={16} color={theme.primary} />
-              <ThemedText type="small" style={{ fontWeight: "600" }}>
-                Find in Egyptian Pharmacies
-              </ThemedText>
-            </View>
-            <View style={styles.pharmacyLinks}>
-              {pharmacyLinks.map((link, idx) => (
-                <Pressable
-                  key={idx}
-                  style={[
-                    styles.pharmacyButton,
-                    { backgroundColor: link.logoColor },
-                  ]}
-                  onPress={() => handlePharmacyPress(link.searchUrl)}
-                >
-                  <Feather name="external-link" size={12} color="#FFFFFF" />
-                  <ThemedText
-                    type="small"
-                    style={{ color: "#FFFFFF", fontWeight: "600" }}
+          {isVerifiedOrSuggested ? (
+            <View style={styles.pharmacySection}>
+              <View style={styles.infoHeader}>
+                <Feather name="shopping-bag" size={16} color={theme.primary} />
+                <ThemedText type="small" style={{ fontWeight: "600" }}>
+                  Find in Egyptian Pharmacies
+                </ThemedText>
+              </View>
+              <View style={styles.pharmacyLinks}>
+                {pharmacyLinks.map((link, idx) => (
+                  <Pressable
+                    key={idx}
+                    style={[
+                      styles.pharmacyButton,
+                      { backgroundColor: link.logoColor },
+                    ]}
+                    onPress={() => handlePharmacyPress(link.searchUrl)}
                   >
-                    {link.pharmacy}
-                  </ThemedText>
-                </Pressable>
-              ))}
+                    <Feather name="external-link" size={12} color="#FFFFFF" />
+                    <ThemedText
+                      type="small"
+                      style={{ color: "#FFFFFF", fontWeight: "600" }}
+                    >
+                      {link.pharmacy}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
             </View>
-          </View>
+          ) : null}
 
           {medicine.alternatives && medicine.alternatives.length > 0 ? (
             <View
@@ -646,5 +641,21 @@ const styles = StyleSheet.create({
     paddingLeft: Spacing.sm,
     borderLeftWidth: 2,
     borderLeftColor: "rgba(0,0,0,0.1)",
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  availableBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1.5,
+    backgroundColor: "transparent",
   },
 });

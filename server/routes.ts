@@ -14,11 +14,6 @@ function generatePharmacyLinks(medicineName: string): PharmacyResult[] {
   
   return [
     {
-      pharmacy: "Dalil Aldawaa",
-      searchUrl: `https://dalilaldwaa.com/search?q=${encodedName}`,
-      logoColor: "#0D9488",
-    },
-    {
       pharmacy: "Seif",
       searchUrl: `https://www.seif-online.com/en/products?search=${encodedName}`,
       logoColor: "#E31837",
@@ -27,6 +22,11 @@ function generatePharmacyLinks(medicineName: string): PharmacyResult[] {
       pharmacy: "Tarshouby",
       searchUrl: `https://alabdellatif-tarshouby.com/en/products?search=${encodedName}`,
       logoColor: "#1E3A8A",
+    },
+    {
+      pharmacy: "Google",
+      searchUrl: `https://www.google.com/search?q=${encodedName}+Egypt+pharmacy+price`,
+      logoColor: "#4285F4",
     },
   ];
 }
