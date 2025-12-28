@@ -118,15 +118,24 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
       </View>
 
       <View style={styles.statusRow}>
-        {isVerifiedOrSuggested ? (
+        {medicine.verificationStatus === "verified" ? (
           <View style={[styles.availableBadge, { borderColor: theme.success }]}>
-            <ThemedText type="small" style={{ color: theme.success, fontWeight: "600" }}>
-              Available
+            <Feather name="check-circle" size={12} color={theme.success} />
+            <ThemedText type="small" style={{ color: theme.success, fontWeight: "600", marginLeft: 4 }}>
+              Verified
+            </ThemedText>
+          </View>
+        ) : medicine.verificationStatus === "suggested" ? (
+          <View style={[styles.availableBadge, { borderColor: theme.warning }]}>
+            <Feather name="alert-circle" size={12} color={theme.warning} />
+            <ThemedText type="small" style={{ color: theme.warning, fontWeight: "600", marginLeft: 4 }}>
+              Suggested
             </ThemedText>
           </View>
         ) : (
-          <View style={[styles.availableBadge, { borderColor: theme.warning }]}>
-            <ThemedText type="small" style={{ color: theme.warning, fontWeight: "600" }}>
+          <View style={[styles.availableBadge, { borderColor: theme.danger }]}>
+            <Feather name="help-circle" size={12} color={theme.danger} />
+            <ThemedText type="small" style={{ color: theme.danger, fontWeight: "600", marginLeft: 4 }}>
               Not Found
             </ThemedText>
           </View>
@@ -157,6 +166,16 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
           </ThemedText>
         </View>
       </View>
+
+      {medicine.verificationStatus === "suggested" && medicine.suggestedMatch ? (
+        <View style={[styles.suggestedMatchAlert, { backgroundColor: `${theme.warning}15` }]}>
+          <Feather name="info" size={14} color={theme.warning} />
+          <ThemedText type="small" style={{ color: theme.warning, flex: 1, marginLeft: Spacing.xs }}>
+            Did you mean: {medicine.suggestedMatch.name}
+            {medicine.suggestedMatch.nameArabic ? ` (${medicine.suggestedMatch.nameArabic})` : ""}?
+          </ThemedText>
+        </View>
+      ) : null}
 
       {expanded && recommendation ? (
         <View style={styles.recommendationSection}>
