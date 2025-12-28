@@ -7,7 +7,7 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
-  Share,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -26,6 +26,12 @@ import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useScanHistory, Medicine, Recommendation } from "@/hooks/useScanHistory";
 import { generatePdfHtml } from "@/lib/pdfGenerator";
 
+interface PharmacyLink {
+  pharmacy: string;
+  searchUrl: string;
+  logoColor: string;
+}
+
 type RouteParams = RouteProp<RootStackParamList, "AnalysisResults">;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -34,9 +40,46 @@ interface ExpandableCardProps {
   recommendation?: Recommendation;
 }
 
+function generatePharmacyLinks(medicineName: string): PharmacyLink[] {
+  const encodedName = encodeURIComponent(medicineName);
+  
+  return [
+    {
+      pharmacy: "Seif",
+      searchUrl: `https://www.seifpharmacy.com/catalogsearch/result/?q=${encodedName}`,
+      logoColor: "#E31837",
+    },
+    {
+      pharmacy: "El Ezaby",
+      searchUrl: `https://www.elezaby.com/search?q=${encodedName}`,
+      logoColor: "#00A651",
+    },
+    {
+      pharmacy: "Tarshoby",
+      searchUrl: `https://www.tarshoby.com/search?q=${encodedName}`,
+      logoColor: "#1E3A8A",
+    },
+  ];
+}
+
 function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
   const { theme } = useTheme();
   const [expanded, setExpanded] = useState(false);
+  const pharmacyLinks = generatePharmacyLinks(medicine.name);
+
+  const handlePharmacyPress = async (url: string) => {
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert("Error", "Cannot open this link");
+      }
+    } catch (error) {
+      console.error("Error opening URL:", error);
+      Alert.alert("Error", "Failed to open pharmacy website");
+    }
+  };
 
   const hasWarnings =
     (recommendation?.interactions && recommendation.interactions.length > 0) ||
@@ -183,6 +226,35 @@ function ExpandableCard({ medicine, recommendation }: ExpandableCardProps) {
               ))}
             </View>
           ) : null}
+
+          <View style={styles.pharmacySection}>
+            <View style={styles.infoHeader}>
+              <Feather name="shopping-bag" size={16} color={theme.primary} />
+              <ThemedText type="small" style={{ fontWeight: "600" }}>
+                Find in Egyptian Pharmacies
+              </ThemedText>
+            </View>
+            <View style={styles.pharmacyLinks}>
+              {pharmacyLinks.map((link, idx) => (
+                <Pressable
+                  key={idx}
+                  style={[
+                    styles.pharmacyButton,
+                    { backgroundColor: link.logoColor },
+                  ]}
+                  onPress={() => handlePharmacyPress(link.searchUrl)}
+                >
+                  <Feather name="external-link" size={12} color="#FFFFFF" />
+                  <ThemedText
+                    type="small"
+                    style={{ color: "#FFFFFF", fontWeight: "600" }}
+                  >
+                    {link.pharmacy}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          </View>
         </View>
       ) : null}
     </Card>
@@ -405,5 +477,25 @@ const styles = StyleSheet.create({
   },
   exportButton: {
     marginTop: Spacing.lg,
+  },
+  pharmacySection: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.08)",
+  },
+  pharmacyLinks: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  pharmacyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
   },
 });

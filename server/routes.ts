@@ -3,6 +3,34 @@ import { createServer, type Server } from "node:http";
 import OpenAI from "openai";
 import { EGYPTIAN_DRUGS } from "./egyptianDrugs";
 
+interface PharmacyResult {
+  pharmacy: string;
+  searchUrl: string;
+  logoColor: string;
+}
+
+function generatePharmacyLinks(medicineName: string): PharmacyResult[] {
+  const encodedName = encodeURIComponent(medicineName);
+  
+  return [
+    {
+      pharmacy: "Seif Pharmacy",
+      searchUrl: `https://www.seifpharmacy.com/catalogsearch/result/?q=${encodedName}`,
+      logoColor: "#E31837",
+    },
+    {
+      pharmacy: "El Ezaby Pharmacy",
+      searchUrl: `https://www.elezaby.com/search?q=${encodedName}`,
+      logoColor: "#00A651",
+    },
+    {
+      pharmacy: "Tarshoby Pharmacy",
+      searchUrl: `https://www.tarshoby.com/search?q=${encodedName}`,
+      logoColor: "#1E3A8A",
+    },
+  ];
+}
+
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -193,6 +221,75 @@ Respond with valid JSON only.`,
       return res.status(404).json({ error: "Drug not found" });
     }
     res.json(drug);
+  });
+
+  app.post("/api/pharmacy-search", async (req: Request, res: Response) => {
+    try {
+      const { medicineName } = req.body;
+
+      if (!medicineName) {
+        return res.status(400).json({ error: "Medicine name is required" });
+      }
+
+      const pharmacyLinks = generatePharmacyLinks(medicineName);
+
+      const drugInfo = EGYPTIAN_DRUGS.find(
+        (d) => d.name.toLowerCase() === medicineName.toLowerCase()
+      );
+
+      let imageUrl: string | null = null;
+      let productDescription: string | null = null;
+
+      try {
+        const searchResponse = await openai.chat.completions.create({
+          model: "gpt-4.1",
+          messages: [
+            {
+              role: "system",
+              content: `You are a pharmaceutical product information assistant. For the given medicine name, provide accurate product information.
+              
+Return JSON with this structure:
+{
+  "productName": "Full product name with strength",
+  "manufacturer": "Manufacturer name",
+  "description": "Brief description of the medicine and its use",
+  "typicalPrice": "Approximate price range in Egyptian Pounds",
+  "packaging": "Common packaging info (e.g., box of 20 tablets)"
+}
+
+Respond with valid JSON only.`,
+            },
+            {
+              role: "user",
+              content: `Provide product information for the Egyptian medicine: ${medicineName}`,
+            },
+          ],
+          max_completion_tokens: 512,
+        });
+
+        const content = searchResponse.choices[0]?.message?.content || "{}";
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const productInfo = JSON.parse(jsonMatch[0]);
+          productDescription = productInfo.description;
+        }
+      } catch (error) {
+        console.error("Error fetching product info:", error);
+      }
+
+      res.json({
+        medicineName,
+        pharmacyLinks,
+        productDescription,
+        drugInfo: drugInfo || null,
+      });
+    } catch (error) {
+      console.error("Error in pharmacy search:", error);
+      res.status(500).json({
+        error: "Failed to search pharmacies",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
   });
 
   const httpServer = createServer(app);
