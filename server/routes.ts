@@ -15,17 +15,17 @@ function generatePharmacyLinks(medicineName: string): PharmacyResult[] {
   return [
     {
       pharmacy: "Seif Pharmacy",
-      searchUrl: `https://www.seifpharmacy.com/catalogsearch/result/?q=${encodedName}`,
+      searchUrl: `https://seif-online.com/en/?s=${encodedName}&post_type=product`,
       logoColor: "#E31837",
     },
     {
       pharmacy: "El Ezaby Pharmacy",
-      searchUrl: `https://www.elezaby.com/search?q=${encodedName}`,
+      searchUrl: `https://www.google.com/search?q=${encodedName}+site:elezabypharmacy.com`,
       logoColor: "#00A651",
     },
     {
-      pharmacy: "Tarshoby Pharmacy",
-      searchUrl: `https://www.tarshoby.com/search?q=${encodedName}`,
+      pharmacy: "Tarshouby Pharmacy",
+      searchUrl: `https://alabdellatif-tarshouby.com/en/?s=${encodedName}`,
       logoColor: "#1E3A8A",
     },
   ];
