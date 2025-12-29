@@ -99,17 +99,20 @@ function levenshteinDistance(a: string, b: string): number {
 
 function findAlternatives(activeIngredient: string | undefined, category: string | undefined, excludeName: string): typeof EGYPTIAN_DRUGS {
   if (activeIngredient) {
+    const normalizedIngredient = activeIngredient.toLowerCase();
     const byIngredient = EGYPTIAN_DRUGS.filter(
       (drug) =>
-        drug.activeIngredient.toLowerCase() === activeIngredient.toLowerCase() &&
+        drug.activeIngredient && 
+        drug.activeIngredient.toLowerCase().includes(normalizedIngredient) &&
         drug.name.toLowerCase() !== excludeName.toLowerCase()
     );
-    if (byIngredient.length > 0) return byIngredient;
+    if (byIngredient.length > 0) return byIngredient.slice(0, 5);
   }
   
   if (category) {
     return EGYPTIAN_DRUGS.filter(
       (drug) =>
+        drug.category && 
         drug.category.toLowerCase() === category.toLowerCase() &&
         drug.name.toLowerCase() !== excludeName.toLowerCase()
     ).slice(0, 3);
