@@ -468,6 +468,55 @@ Respond with valid JSON only.`,
     }
   });
 
+  function fuzzyMatch(text: string, query: string): { matches: boolean; score: number } {
+    if (!text || !query) return { matches: false, score: 0 };
+    
+    const normalizedText = text.toLowerCase().replace(/[-_.,()]/g, ' ').replace(/\s+/g, ' ').trim();
+    const normalizedQuery = query.toLowerCase().replace(/[-_.,()]/g, ' ').replace(/\s+/g, ' ').trim();
+    
+    if (normalizedText === normalizedQuery) return { matches: true, score: 100 };
+    if (normalizedText.includes(normalizedQuery)) return { matches: true, score: 90 };
+    if (normalizedQuery.includes(normalizedText)) return { matches: true, score: 85 };
+    
+    const queryWords = normalizedQuery.split(' ').filter(w => w.length > 1);
+    const textWords = normalizedText.split(' ');
+    
+    let matchedWords = 0;
+    let partialMatches = 0;
+    
+    for (const qWord of queryWords) {
+      for (const tWord of textWords) {
+        if (tWord === qWord) {
+          matchedWords++;
+          break;
+        } else if (tWord.includes(qWord) || qWord.includes(tWord)) {
+          partialMatches++;
+          break;
+        } else if (tWord.startsWith(qWord.slice(0, 3)) || qWord.startsWith(tWord.slice(0, 3))) {
+          partialMatches += 0.5;
+          break;
+        }
+      }
+    }
+    
+    if (queryWords.length > 0) {
+      const matchRatio = (matchedWords + partialMatches * 0.7) / queryWords.length;
+      if (matchRatio >= 0.5) {
+        return { matches: true, score: 50 + matchRatio * 40 };
+      }
+    }
+    
+    const maxLen = Math.max(normalizedText.length, normalizedQuery.length);
+    const distance = levenshteinDistance(normalizedText.slice(0, 30), normalizedQuery.slice(0, 30));
+    const similarity = 1 - distance / maxLen;
+    
+    if (similarity >= 0.6) {
+      return { matches: true, score: similarity * 60 };
+    }
+    
+    return { matches: false, score: 0 };
+  }
+
   app.get("/api/drugs", (req: Request, res: Response) => {
     try {
       const search = (req.query.search as string || "").toLowerCase().trim();
@@ -477,14 +526,31 @@ Respond with valid JSON only.`,
       const offset = (page - 1) * limit;
 
       let filteredDrugs = EGYPTIAN_DRUGS;
+      let scoredDrugs: Array<{ drug: typeof EGYPTIAN_DRUGS[0]; score: number }> = [];
 
       if (search) {
-        filteredDrugs = filteredDrugs.filter((drug) =>
-          drug.name.toLowerCase().includes(search) ||
-          drug.nameArabic?.includes(search) ||
-          drug.activeIngredient?.toLowerCase().includes(search) ||
-          drug.descriptionEnglish?.toLowerCase().includes(search)
-        );
+        for (const drug of EGYPTIAN_DRUGS) {
+          let bestScore = 0;
+          
+          const nameMatch = fuzzyMatch(drug.name, search);
+          if (nameMatch.matches) bestScore = Math.max(bestScore, nameMatch.score);
+          
+          const arabicMatch = fuzzyMatch(drug.nameArabic || '', search);
+          if (arabicMatch.matches) bestScore = Math.max(bestScore, arabicMatch.score);
+          
+          const ingredientMatch = fuzzyMatch(drug.activeIngredient || '', search);
+          if (ingredientMatch.matches) bestScore = Math.max(bestScore, ingredientMatch.score * 0.9);
+          
+          const descMatch = fuzzyMatch(drug.descriptionEnglish || '', search);
+          if (descMatch.matches) bestScore = Math.max(bestScore, descMatch.score * 0.7);
+          
+          if (bestScore > 0) {
+            scoredDrugs.push({ drug, score: bestScore });
+          }
+        }
+        
+        scoredDrugs.sort((a, b) => b.score - a.score);
+        filteredDrugs = scoredDrugs.map(s => s.drug);
       }
 
       if (category && category !== "All") {

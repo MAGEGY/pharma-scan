@@ -1,11 +1,11 @@
 {
-  "id": "206a6d51-6338-418c-bbe1-a9da68c60d6c",
-  "createdAt": "2025-12-29T00:52:16.970Z",
+  "id": "bf91c6c0-8cbf-4fd4-88cc-ad332ce2c77f",
+  "createdAt": "2025-12-29T01:20:30.061Z",
   "runtimeVersion": "exposdk:54.0.0",
   "launchAsset": {
-    "key": "bundle-1766969536970-16546",
+    "key": "bundle-1766971230061-491",
     "contentType": "application/javascript",
-    "url": "https://791a2d2f-8fd5-404c-9c04-5337c82849c9-00-3sk1zn5pfcac0.picard.replit.dev/1766969536970-16546/_expo/static/js/ios/bundle.js"
+    "url": "https://791a2d2f-8fd5-404c-9c04-5337c82849c9-00-3sk1zn5pfcac0.picard.replit.dev/1766971230061-491/_expo/static/js/ios/bundle.js"
   },
   "assets": [],
   "metadata": {},
@@ -124,6 +124,6 @@
       },
       "mainModuleName": "client/index"
     },
-    "scopeKey": "@anonymous/medscan-egypt-0ce8bbbf-4f5c-401b-90e6-79d9a8a1bc89"
+    "scopeKey": "@anonymous/medscan-egypt-7bbe7619-5c82-4aa8-8db8-41b36b8b95d4"
   }
 }
