@@ -1,43 +1,84 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   StyleSheet,
   FlatList,
   Pressable,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useQuery } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
-import { EGYPTIAN_DRUGS, Drug } from "@/data/egyptianDrugs";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const CATEGORIES = ["All", "Antibiotic", "Analgesic", "Antihypertensive", "Antidiabetic", "Antihistamine"];
+interface Drug {
+  id: string;
+  name: string;
+  nameArabic: string;
+  activeIngredient: string;
+  category: string;
+  manufacturer: string;
+  form: string;
+  price: string;
+  dosing: string;
+  description?: string;
+}
+
+interface DrugsResponse {
+  drugs: Drug[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
 
 export default function LibraryScreen() {
   const { theme } = useTheme();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<NavigationProp>();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  const filteredDrugs = EGYPTIAN_DRUGS.filter((drug) => {
-    const matchesSearch =
-      drug.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      drug.nameArabic.includes(searchQuery) ||
-      drug.activeIngredient.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory =
-      selectedCategory === "All" || drug.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+  const debounceTimeout = React.useRef<NodeJS.Timeout | null>(null);
+
+  const handleSearchChange = useCallback((text: string) => {
+    setSearchQuery(text);
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+    }
+    debounceTimeout.current = setTimeout(() => {
+      setDebouncedSearch(text);
+    }, 300);
+  }, []);
+
+  const { data, isLoading, error } = useQuery<DrugsResponse>({
+    queryKey: ["/api/drugs", debouncedSearch],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (debouncedSearch) {
+        params.append("search", debouncedSearch);
+      }
+      params.append("limit", "100");
+      const response = await fetch(`/api/drugs?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch drugs");
+      }
+      return response.json();
+    },
   });
+
+  const drugs = data?.drugs || [];
+  const total = data?.total || 0;
 
   const renderItem = ({ item }: { item: Drug }) => (
     <Pressable
@@ -56,25 +97,33 @@ export default function LibraryScreen() {
           <ThemedText type="body" style={{ fontWeight: "600" }}>
             {item.name}
           </ThemedText>
-          <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            {item.nameArabic}
-          </ThemedText>
+          {item.nameArabic ? (
+            <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              {item.nameArabic}
+            </ThemedText>
+          ) : null}
         </View>
-        <ThemedText type="small" style={{ color: theme.primary }}>
-          {item.activeIngredient}
-        </ThemedText>
-        <View style={styles.drugMeta}>
-          <View
-            style={[
-              styles.categoryBadge,
-              { backgroundColor: theme.backgroundSecondary },
-            ]}
-          >
-            <ThemedText type="small">{item.category}</ThemedText>
-          </View>
-          <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            {item.manufacturer}
+        {item.activeIngredient ? (
+          <ThemedText type="small" style={{ color: theme.primary }}>
+            {item.activeIngredient}
           </ThemedText>
+        ) : null}
+        <View style={styles.drugMeta}>
+          {item.category ? (
+            <View
+              style={[
+                styles.categoryBadge,
+                { backgroundColor: theme.backgroundSecondary },
+              ]}
+            >
+              <ThemedText type="small">{item.category}</ThemedText>
+            </View>
+          ) : null}
+          {item.price ? (
+            <ThemedText type="small" style={{ color: theme.success }}>
+              {item.price} EGP
+            </ThemedText>
+          ) : null}
         </View>
       </View>
       <Feather name="chevron-right" size={20} color={theme.textSecondary} />
@@ -93,77 +142,76 @@ export default function LibraryScreen() {
           <Feather name="search" size={20} color={theme.textSecondary} />
           <TextInput
             style={[styles.searchInput, { color: theme.text }]}
-            placeholder="Search drugs (English or Arabic)..."
+            placeholder="Search 16,710 medicines..."
             placeholderTextColor={theme.textSecondary}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={handleSearchChange}
           />
           {searchQuery ? (
-            <Pressable onPress={() => setSearchQuery("")}>
+            <Pressable onPress={() => { setSearchQuery(""); setDebouncedSearch(""); }}>
               <Feather name="x" size={20} color={theme.textSecondary} />
             </Pressable>
           ) : null}
         </View>
+        <View style={styles.resultCount}>
+          <ThemedText type="small" style={{ color: theme.textSecondary }}>
+            {isLoading ? "Searching..." : `${total.toLocaleString()} medicines found`}
+          </ThemedText>
+        </View>
       </View>
 
-      <FlatList
-        horizontal
-        data={CATEGORIES}
-        keyExtractor={(item) => item}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoryList}
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() => setSelectedCategory(item)}
-            style={[
-              styles.categoryChip,
-              {
-                backgroundColor:
-                  selectedCategory === item ? theme.primary : theme.backgroundDefault,
-                borderColor: selectedCategory === item ? theme.primary : theme.border,
-              },
-            ]}
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <ThemedText type="body" style={{ color: theme.textSecondary, marginTop: Spacing.md }}>
+            Loading medicines...
+          </ThemedText>
+        </View>
+      ) : error ? (
+        <Card elevation={1} style={styles.emptyCard}>
+          <Feather name="alert-circle" size={48} color={theme.danger} />
+          <ThemedText
+            type="body"
+            style={[styles.emptyText, { color: theme.danger }]}
           >
-            <ThemedText
-              type="small"
-              style={{
-                color: selectedCategory === item ? "#FFFFFF" : theme.text,
-              }}
-            >
-              {item}
-            </ThemedText>
-          </Pressable>
-        )}
-        style={styles.categoryContainer}
-      />
-
-      <FlatList
-        data={filteredDrugs}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: tabBarHeight + Spacing.xl },
-        ]}
-        ListEmptyComponent={
-          <Card elevation={1} style={styles.emptyCard}>
-            <Feather name="search" size={48} color={theme.textSecondary} />
-            <ThemedText
-              type="body"
-              style={[styles.emptyText, { color: theme.textSecondary }]}
-            >
-              No drugs found
-            </ThemedText>
-            <ThemedText
-              type="small"
-              style={[styles.emptySubtext, { color: theme.textSecondary }]}
-            >
-              Try adjusting your search or filter
-            </ThemedText>
-          </Card>
-        }
-        ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
-      />
+            Failed to load medicines
+          </ThemedText>
+          <ThemedText
+            type="small"
+            style={[styles.emptySubtext, { color: theme.textSecondary }]}
+          >
+            Please check your connection and try again
+          </ThemedText>
+        </Card>
+      ) : (
+        <FlatList
+          data={drugs}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: tabBarHeight + Spacing.xl },
+          ]}
+          ListEmptyComponent={
+            <Card elevation={1} style={styles.emptyCard}>
+              <Feather name="search" size={48} color={theme.textSecondary} />
+              <ThemedText
+                type="body"
+                style={[styles.emptyText, { color: theme.textSecondary }]}
+              >
+                No medicines found
+              </ThemedText>
+              <ThemedText
+                type="small"
+                style={[styles.emptySubtext, { color: theme.textSecondary }]}
+              >
+                Try a different search term
+              </ThemedText>
+            </Card>
+          }
+          ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
+        />
+      )}
     </View>
   );
 }
@@ -189,22 +237,18 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
   },
-  categoryContainer: {
-    maxHeight: 40,
+  resultCount: {
+    marginTop: Spacing.sm,
+    alignItems: "center",
   },
-  categoryList: {
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  categoryChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   listContent: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.sm,
   },
   drugItem: {
     flexDirection: "row",

@@ -468,6 +468,91 @@ Respond with valid JSON only.`,
     }
   });
 
+  app.get("/api/drugs", (req: Request, res: Response) => {
+    try {
+      const search = (req.query.search as string || "").toLowerCase().trim();
+      const category = (req.query.category as string || "All");
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const offset = (page - 1) * limit;
+
+      let filteredDrugs = EGYPTIAN_DRUGS;
+
+      if (search) {
+        filteredDrugs = filteredDrugs.filter((drug) =>
+          drug.name.toLowerCase().includes(search) ||
+          drug.nameArabic?.includes(search) ||
+          drug.activeIngredient?.toLowerCase().includes(search) ||
+          drug.descriptionEnglish?.toLowerCase().includes(search)
+        );
+      }
+
+      if (category && category !== "All") {
+        filteredDrugs = filteredDrugs.filter((drug) =>
+          drug.category?.toLowerCase().includes(category.toLowerCase()) ||
+          drug.activeIngredient?.toLowerCase().includes(category.toLowerCase())
+        );
+      }
+
+      const total = filteredDrugs.length;
+      const paginatedDrugs = filteredDrugs.slice(offset, offset + limit);
+
+      const drugs = paginatedDrugs.map((drug) => ({
+        id: String(drug.id),
+        name: drug.name,
+        nameArabic: drug.nameArabic || "",
+        activeIngredient: drug.activeIngredient || "",
+        category: drug.category || "Medicine",
+        manufacturer: drug.manufacturer || "",
+        form: drug.form || "",
+        price: drug.price ? String(drug.price) : "",
+        dosing: drug.dosing || "",
+        description: drug.descriptionEnglish || drug.descriptionArabic || "",
+      }));
+
+      res.json({
+        drugs,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (error) {
+      console.error("Error fetching drugs:", error);
+      res.status(500).json({ error: "Failed to fetch drugs" });
+    }
+  });
+
+  app.get("/api/drugs/:id", (req: Request, res: Response) => {
+    try {
+      const drugId = req.params.id;
+      const drug = EGYPTIAN_DRUGS.find((d) => String(d.id) === drugId);
+
+      if (!drug) {
+        return res.status(404).json({ error: "Drug not found" });
+      }
+
+      res.json({
+        id: String(drug.id),
+        name: drug.name,
+        nameArabic: drug.nameArabic || "",
+        activeIngredient: drug.activeIngredient || "",
+        category: drug.category || "Medicine",
+        manufacturer: drug.manufacturer || "",
+        form: drug.form || "",
+        price: drug.price ? String(drug.price) : "",
+        dosing: drug.dosing || "",
+        description: drug.descriptionEnglish || drug.descriptionArabic || "",
+        interactions: drug.interactions || [],
+        contraindications: drug.contraindications || [],
+        sideEffects: drug.sideEffects || [],
+      });
+    } catch (error) {
+      console.error("Error fetching drug:", error);
+      res.status(500).json({ error: "Failed to fetch drug" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;
