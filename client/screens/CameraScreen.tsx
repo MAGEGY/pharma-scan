@@ -246,10 +246,32 @@ export default function CameraScreen() {
 
       {isProcessing ? (
         <View style={styles.processingOverlay}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
-          <ThemedText type="body" style={styles.processingText}>
-            Analyzing prescription...
-          </ThemedText>
+          <View style={styles.aiProcessingContainer}>
+            <View style={styles.aiIconContainer}>
+              <Feather name="cpu" size={48} color="#FFFFFF" />
+              <View style={styles.pulseCircle} />
+            </View>
+            <ThemedText type="h4" style={styles.processingTitle}>
+              AI Analyzing...
+            </ThemedText>
+            <ThemedText type="body" style={styles.processingText}>
+              Extracting medicines from prescription
+            </ThemedText>
+            <View style={styles.processingSteps}>
+              <View style={styles.processingStep}>
+                <Feather name="check-circle" size={16} color="#10B981" />
+                <ThemedText type="small" style={styles.stepText}>Image captured</ThemedText>
+              </View>
+              <View style={styles.processingStep}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <ThemedText type="small" style={styles.stepText}>Reading prescription...</ThemedText>
+              </View>
+              <View style={styles.processingStep}>
+                <Feather name="circle" size={16} color="rgba(255,255,255,0.3)" />
+                <ThemedText type="small" style={[styles.stepText, { opacity: 0.5 }]}>Matching medicines</ThemedText>
+              </View>
+            </View>
+          </View>
         </View>
       ) : null}
     </View>
@@ -393,12 +415,45 @@ const styles = StyleSheet.create({
   },
   processingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     alignItems: "center",
     justifyContent: "center",
-    gap: Spacing.lg,
+  },
+  aiProcessingContainer: {
+    alignItems: "center",
+    padding: Spacing["2xl"],
+  },
+  aiIconContainer: {
+    position: "relative",
+    marginBottom: Spacing.xl,
+  },
+  pulseCircle: {
+    position: "absolute",
+    top: -10,
+    left: -10,
+    right: -10,
+    bottom: -10,
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  processingTitle: {
+    color: "#FFFFFF",
+    marginBottom: Spacing.sm,
   },
   processingText: {
+    color: "rgba(255,255,255,0.8)",
+    marginBottom: Spacing.xl,
+  },
+  processingSteps: {
+    gap: Spacing.md,
+  },
+  processingStep: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  stepText: {
     color: "#FFFFFF",
   },
 });
