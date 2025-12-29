@@ -13,11 +13,21 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useQuery } from "@tanstack/react-query";
 
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  withSpring,
+  Easing,
+} from "react-native-reanimated";
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
+import { getApiUrl } from "@/lib/query-client";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -69,13 +79,59 @@ export default function LibraryScreen() {
         params.append("search", debouncedSearch);
       }
       params.append("limit", "100");
-      const response = await fetch(`/api/drugs?${params.toString()}`);
+      const baseUrl = getApiUrl();
+      const url = new URL(`/api/drugs?${params.toString()}`, baseUrl);
+      const response = await fetch(url.toString());
       if (!response.ok) {
         throw new Error("Failed to fetch drugs");
       }
       return response.json();
     },
   });
+
+  // Animated AI search icon
+  const pulseScale = useSharedValue(1);
+  const glowOpacity = useSharedValue(0.3);
+  const rotation = useSharedValue(0);
+
+  React.useEffect(() => {
+    if (isLoading || debouncedSearch) {
+      pulseScale.value = withRepeat(
+        withSequence(
+          withTiming(1.15, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
+      );
+      glowOpacity.value = withRepeat(
+        withSequence(
+          withTiming(0.8, { duration: 800 }),
+          withTiming(0.3, { duration: 800 })
+        ),
+        -1,
+        true
+      );
+      rotation.value = withRepeat(
+        withTiming(360, { duration: 3000, easing: Easing.linear }),
+        -1,
+        false
+      );
+    } else {
+      pulseScale.value = withSpring(1);
+      glowOpacity.value = withTiming(0.3);
+      rotation.value = withTiming(0);
+    }
+  }, [isLoading, debouncedSearch]);
+
+  const animatedSearchStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulseScale.value }],
+  }));
+
+  const animatedGlowStyle = useAnimatedStyle(() => ({
+    opacity: glowOpacity.value,
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
 
   const drugs = data?.drugs || [];
   const total = data?.total || 0;
@@ -136,13 +192,26 @@ export default function LibraryScreen() {
         <View
           style={[
             styles.searchBar,
-            { backgroundColor: theme.backgroundDefault, borderColor: theme.border },
+            { 
+              backgroundColor: theme.backgroundDefault, 
+              borderColor: isLoading || debouncedSearch ? theme.primary : theme.border,
+              borderWidth: isLoading || debouncedSearch ? 2 : 1,
+            },
           ]}
         >
-          <Feather name="search" size={20} color={theme.textSecondary} />
+          <View style={styles.searchIconContainer}>
+            <Animated.View style={[styles.glowRing, animatedGlowStyle, { borderColor: theme.primary }]} />
+            <Animated.View style={animatedSearchStyle}>
+              <Feather 
+                name={isLoading ? "loader" : "search"} 
+                size={20} 
+                color={isLoading || debouncedSearch ? theme.primary : theme.textSecondary} 
+              />
+            </Animated.View>
+          </View>
           <TextInput
             style={[styles.searchInput, { color: theme.text }]}
-            placeholder="Search 16,710 medicines..."
+            placeholder="AI-powered search in 16,710 medicines..."
             placeholderTextColor={theme.textSecondary}
             value={searchQuery}
             onChangeText={handleSearchChange}
@@ -154,8 +223,14 @@ export default function LibraryScreen() {
           ) : null}
         </View>
         <View style={styles.resultCount}>
+          <View style={styles.aiPoweredBadge}>
+            <Feather name="cpu" size={12} color={theme.primary} />
+            <ThemedText type="small" style={{ color: theme.primary, fontWeight: "600" }}>
+              AI-Powered
+            </ThemedText>
+          </View>
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
-            {isLoading ? "Searching..." : `${total.toLocaleString()} medicines found`}
+            {isLoading ? "Searching database..." : `${total.toLocaleString()} medicines found`}
           </ThemedText>
         </View>
       </View>
@@ -227,11 +302,24 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.lg,
     borderWidth: 1,
     paddingHorizontal: Spacing.md,
-    height: 44,
+    height: 52,
     gap: Spacing.sm,
+  },
+  searchIconContainer: {
+    width: 28,
+    height: 28,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  glowRing: {
+    position: "absolute",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
   },
   searchInput: {
     flex: 1,
@@ -239,7 +327,15 @@ const styles = StyleSheet.create({
   },
   resultCount: {
     marginTop: Spacing.sm,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.md,
+  },
+  aiPoweredBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
   },
   loadingContainer: {
     flex: 1,
