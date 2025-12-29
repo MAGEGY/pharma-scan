@@ -376,28 +376,6 @@ Respond with valid JSON only.`,
     }
   });
 
-  app.get("/api/drugs", (req: Request, res: Response) => {
-    const { q } = req.query;
-    if (q && typeof q === "string") {
-      const query = q.toLowerCase();
-      const filtered = EGYPTIAN_DRUGS.filter(
-        (drug) =>
-          drug.name.toLowerCase().includes(query) ||
-          drug.nameArabic.includes(q) ||
-          drug.activeIngredient.toLowerCase().includes(query)
-      );
-      return res.json(filtered);
-    }
-    res.json(EGYPTIAN_DRUGS);
-  });
-
-  app.get("/api/drugs/:id", (req: Request, res: Response) => {
-    const drug = EGYPTIAN_DRUGS.find((d) => d.id === req.params.id);
-    if (!drug) {
-      return res.status(404).json({ error: "Drug not found" });
-    }
-    res.json(drug);
-  });
 
   app.post("/api/pharmacy-search", async (req: Request, res: Response) => {
     try {
