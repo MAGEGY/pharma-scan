@@ -1,0 +1,1106 @@
+import { db } from './db';
+import { eq } from 'drizzle-orm';
+import { loggingService } from './loggingService';
+import { 
+  users,
+  egyptianDrugs,
+  userPrescriptions,
+  userAllergies,
+  drugInteractions,
+  dosageGuidelines,
+  drugReviews,
+  medicalQuestions,
+  supportTickets,
+  helpRequests,
+  helpResponses
+} from '../shared/schema';
+
+interface DrugReview {
+  id: string;
+  userId: string;
+  drugId: number;
+  drugName: string;
+  activeIngredient: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  effectiveness: 'very_poor' | 'poor' | 'average' | 'good' | 'very_good' | 'excellent';
+  sideEffects: string[];
+  interactions: Array<{
+    drugName: string;
+    severity: 'minor' | 'moderate' | 'major' | 'contraindicated';
+    description: string;
+    recommendation: string;
+  }>;
+  rating: number;
+  review: string;
+  pros: string;
+  cons: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface MedicalQuestion {
+  id: string;
+  userId: string;
+  drugId: number;
+  drugName: string;
+  question: string;
+  category: 'efficacy' | 'safety' | 'usage' | 'interactions' | 'side_effects' | 'alternatives';
+  answer: string;
+  isAnswered: boolean;
+  askedBy: string;
+  answeredBy: string;
+  helpful: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SupportTicket {
+  id: string;
+  userId: string;
+  issueType: 'bug' | 'feature_request' | 'question' | 'feedback' | 'complaint';
+  title: string;
+  description: string;
+  category: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'open' | 'in_progress' | 'resolved' | 'closed' | 'reopened' | 'on_hold';
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  assignedTo?: string;
+  assignedAt?: string;
+  dueDate?: string;
+  resolvedIn?: string;
+}
+
+interface HelpRequest {
+  id: string;
+  userId: string;
+  query: string;
+  category: 'general' | 'drug_specific' | 'usage_help' | 'interaction_check' | 'dosage_help' | 'allergy_help'
+  | 'backup_help' | 'export_help' | 'update_help'
+  | 'account_help' | 'security_help'
+  | 'technical_support';
+  question: string;
+  context?: any;
+  metadata?: any;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface HelpResponse {
+  id: string;
+  requestId: string;
+  answer: string;
+  category: string;
+  helpful: number;
+  sources: Array<{
+    title: string;
+    url: string;
+    snippet: string;
+    relevance: number;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export class UserReviewsService {
+  private reviews: Map<string, DrugReview> = new Map();
+  private questions: Map<string, MedicalQuestion> = new Map();
+  private tickets: Map<string, SupportTicket> = new Map();
+  private helpRequests: Map<string, HelpRequest> = new Map();
+  private helpResponses: Map<string, HelpResponse> = new Map();
+
+  constructor() {
+    this.initializeDefaultData();
+    this.startMetricsCollection();
+  }
+
+  // REVIEWS MANAGEMENT
+  async createReview(reviewData: Omit<DrugReview, 'id' | 'createdAt' | 'updatedAt'>): Promise<DrugReview> {
+    const review: DrugReview = {
+      id: crypto.randomUUID(),
+      ...reviewData,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.reviews.set(review.id, review);
+
+    // Log review creation
+    loggingService.info('Drug review created', {
+      reviewId: review.id,
+      userId: review.userId,
+    }, {
+      business: {
+        action: 'review_created',
+        result: 'success',
+        value: review.rating,
+      },
+    });
+
+    return review;
+  }
+
+  async getReviews(filter?: {
+    userId?: string;
+    drugId?: number;
+    rating?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<DrugReview[]> {
+    let reviews = Array.from(this.reviews.values());
+
+    if (filter) {
+      if (filter.userId) {
+        reviews = reviews.filter(r => r.userId === filter.userId);
+      }
+      if (filter.drugId) {
+        reviews = reviews.filter(r => r.drugId === filter.drugId);
+      }
+      if (filter.rating) {
+        reviews = reviews.filter(r => r.rating === filter.rating);
+      }
+      if (filter.offset) {
+        reviews = reviews.slice(filter.offset);
+      }
+      if (filter.limit) {
+        reviews = reviews.slice(0, filter.limit);
+      }
+    }
+
+    // Sort by creation date (newest first)
+    reviews.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+    return reviews;
+  }
+
+  async updateReview(reviewId: string, updates: Partial<Omit<DrugReview, 'id' | 'createdAt' | 'updatedAt'>>): Promise<DrugReview | null> {
+    const review = this.reviews.get(reviewId);
+    if (!review) return null;
+
+    const updatedReview = {
+      ...review,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.reviews.set(reviewId, updatedReview);
+
+    loggingService.info('Drug review updated', {
+      reviewId,
+      userId: review.userId,
+    }, {
+      business: {
+        action: 'review_updated',
+        result: 'success',
+        value: updatedReview.rating,
+      },
+    });
+
+    return updatedReview;
+  }
+
+  async deleteReview(reviewId: string, userId: string): Promise<boolean> {
+    const review = this.reviews.get(reviewId);
+    if (!review || review.userId !== userId) {
+      return false;
+    }
+
+    this.reviews.delete(reviewId);
+
+    loggingService.info('Drug review deleted', {
+      reviewId,
+      userId,
+    }, {
+      business: {
+        action: 'review_deleted',
+        result: 'success',
+      },
+    });
+
+    return true;
+  }
+
+  async getReview(reviewId: string): Promise<DrugReview | null> {
+    return this.reviews.get(reviewId) || null;
+  }
+
+  async getUserReviewStats(userId: string): Promise<{
+    totalReviews: number;
+    averageRating: number;
+    ratingDistribution: Record<string, number>;
+    recentReviews: DrugReview[];
+  }> {
+    const reviews = await this.getReviews({ userId });
+    
+    const totalReviews = reviews.length;
+    const averageRating = reviews.length > 0 
+      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length 
+      : 0;
+
+    const ratingDistribution = reviews.reduce((acc, r) => {
+      const ratingKey = r.rating === 1 ? 'very_poor' 
+        : r.rating === 2 ? 'poor' 
+        : r.rating === 3 ? 'average' 
+        : r.rating === 4 ? 'good' 
+        : r.rating === 5 ? 'very_good' 
+        : 'excellent';
+      
+      acc[ratingKey] = (acc[ratingKey] || 0) + 1;
+      return acc;
+    }, {
+      'very_poor': 0,
+      'poor': 0,
+      'average': 0,
+      'good': 0,
+      'very_good': 0,
+      'excellent': 0,
+    });
+
+    const recentReviews = reviews
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 10);
+
+    return {
+      totalReviews,
+      averageRating,
+      ratingDistribution,
+      recentReviews,
+    };
+  }
+
+  // QUESTIONS MANAGEMENT
+  async createQuestion(questionData: Omit<MedicalQuestion, 'id' | 'createdAt' | 'updatedAt'>): Promise<MedicalQuestion> {
+    const question: MedicalQuestion = {
+      id: crypto.randomUUID(),
+      ...questionData,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.questions.set(question.id, question);
+
+    // Log question creation
+    loggingService.info('Medical question created', {
+      questionId: question.id,
+      userId: question.userId,
+    }, {
+      business: {
+        action: 'question_created',
+        result: 'success',
+      },
+    });
+
+    return question;
+  }
+
+  async getQuestions(filter?: {
+    userId?: string;
+    drugId?: number;
+    category?: string;
+    isAnswered?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<MedicalQuestion[]> {
+    let questions = Array.from(this.questions.values());
+
+    if (filter) {
+      if (filter.userId) {
+        questions = questions.filter(q => q.userId === filter.userId);
+      }
+      if (filter.drugId) {
+        questions = questions.filter(q => q.drugId === filter.drugId);
+      }
+      if (filter.category) {
+        questions = questions.filter(q => q.category === filter.category);
+      }
+      if (filter.isAnswered !== undefined) {
+        questions = questions.filter(q => q.isAnswered === filter.isAnswered);
+      }
+      if (filter.offset) {
+        questions = questions.slice(filter.offset);
+      }
+      if (filter.limit) {
+        questions = questions.slice(0, filter.limit);
+      }
+    }
+
+    // Sort by creation date (newest first)
+    questions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return questions;
+  }
+
+  async answerQuestion(questionId: string, answer: string, userId: string): Promise<MedicalQuestion | null> {
+    const question = this.questions.get(questionId);
+    if (!question || question.userId !== userId) {
+      return null;
+    }
+
+    const answeredQuestion = {
+      ...question,
+      answer,
+      isAnswered: true,
+      answeredBy: userId,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.questions.set(questionId, answeredQuestion);
+
+    loggingService.info('Medical question answered', {
+      questionId,
+      userId,
+      answer,
+    }, {
+      business: {
+        action: 'question_answered',
+        result: 'success',
+      },
+    });
+
+    return answeredQuestion;
+  }
+
+  async getUnansweredQuestions(filter?: {
+    userId?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<MedicalQuestion[]> {
+    let questions = Array.from(this.questions.values());
+
+    if (filter.userId) {
+      questions = questions.filter(q => q.userId === filter.userId);
+    }
+
+    const unansweredQuestions = questions.filter(q => !q.isAnswered);
+
+    // Sort by creation date (newest first)
+    unansweredQuestions.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    if (filter.offset) {
+      unansweredQuestions = unansweredQuestions.slice(filter.offset);
+    }
+
+    if (filter.limit) {
+      unansweredQuestions = unansweredQuestions.slice(0, filter.limit);
+    }
+
+    return unansweredQuestions;
+  }
+
+  async getPopularQuestions(limit?: number): Promise<MedicalQuestion[]> {
+    const allQuestions = Array.from(this.questions.values());
+    
+    // Sort by answer count (placeholder - would need answerCount field)
+    const popularQuestions = allQuestions
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit || 10);
+
+    return popularQuestions;
+  }
+
+  async getQuestionAnalytics(timeRange?: {
+    startTime?: Date;
+    endTime?: Date;
+  }): Promise<{
+    totalQuestions: number;
+    answeredQuestions: number;
+    answerRate: number;
+    popularQuestions: MedicalQuestion[];
+  }> {
+    const allQuestions = Array.from(this.questions.values());
+
+    let questions = allQuestions;
+
+    if (timeRange) {
+      questions = allQuestions.filter(q => 
+        new Date(q.createdAt) >= (timeRange.startTime || new Date(0)) &&
+        new Date(q.createdAt) <= (timeRange.endTime || new Date())
+      );
+    }
+
+    const totalQuestions = questions.length;
+    const answeredQuestions = questions.filter(q => q.isAnswered).length;
+    const answerRate = totalQuestions > 0 ? (answeredQuestions / totalQuestions) * 100 : 0;
+
+    return {
+      totalQuestions,
+      answeredQuestions,
+      answerRate,
+      popularQuestions,
+    };
+  }
+
+  // SUPPORT TICKETS MANAGEMENT
+  async createTicket(ticketData: Omit<SupportTicket, 'id' | 'createdAt' | 'updatedAt'>): Promise<SupportTicket> {
+    const ticket: SupportTicket = {
+      id: crypto.randomUUID(),
+      ...ticketData,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.tickets.set(ticket.id, ticket);
+
+    // Log ticket creation
+    loggingService.info('Support ticket created', {
+      ticketId: ticket.id,
+      userId: ticket.userId,
+    }, {
+      business: {
+        action: 'ticket_created',
+        result: 'success',
+      },
+    });
+
+    return ticket;
+  }
+
+  async getTickets(filter?: {
+    userId?: string;
+    status?: SupportTicket['status'];
+    priority?: SupportTicket['priority'];
+    limit?: number;
+    offset?: number;
+  }): Promise<SupportTicket[]> {
+    let tickets = Array.from(this.tickets.values());
+
+    if (filter) {
+      if (filter.userId) {
+        tickets = tickets.filter(t => t.userId === filter.userId);
+      }
+      if (filter.status) {
+        tickets = tickets.filter(t => t.status === filter.status);
+      }
+      if (filter.priority) {
+        tickets = tickets.filter(t => t.priority === filter.priority);
+      }
+      if (filter.offset) {
+        tickets = tickets.slice(filter.offset);
+      }
+      if (filter.limit) {
+        tickets = tickets.slice(0, filter.limit);
+      }
+    }
+
+    // Sort by creation date (newest first)
+    tickets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return tickets;
+  }
+
+  async updateTicket(ticketId: string, updates: Partial<Omit<SupportTicket, 'id' | 'createdAt' | 'updatedAt'>>): Promise<SupportTicket | null> {
+    const ticket = this.tickets.get(ticketId);
+    if (!ticket) return null;
+
+    const updatedTicket = {
+      ...ticket,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.tickets.set(ticketId, updatedTicket);
+
+    loggingService.info('Support ticket updated', {
+      ticketId,
+      userId: ticket.userId,
+    }, {
+      business: {
+        action: 'ticket_updated',
+        result: 'success',
+      },
+    });
+
+    return updatedTicket;
+  }
+
+  async closeTicket(ticketId: string, userId: string): Promise<boolean> {
+    const ticket = this.tickets.get(ticketId);
+    if (!ticket || ticket.userId !== userId) {
+      return false;
+    }
+
+    const closedTicket = {
+      ...ticket,
+      status: 'closed' as const,
+      resolvedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.tickets.set(ticketId, closedTicket);
+
+    loggingService.info('Support ticket closed', {
+      ticketId,
+      userId,
+    }, {
+      business: {
+        action: 'ticket_closed',
+        result: 'success',
+      },
+    });
+
+    return true;
+  }
+
+  async getTicket(ticketId: string): Promise<SupportTicket | null> {
+    return this.tickets.get(ticketId) || null;
+  }
+
+  async getTicketAnalytics(timeRange?: {
+    startTime?: Date;
+    endTime?: Date;
+  }): Promise<{
+    totalTickets: number;
+    openTickets: number;
+    closedTickets: number;
+    averageResolutionTime: number;
+    priorityBreakdown: Record<string, number>;
+    successRate: number;
+    popularIssues: Array<{
+      title: string;
+      count: number;
+      lastOccurrence: string;
+    }>;
+  }> {
+    const tickets = Array.from(this.tickets.values());
+
+    if (timeRange) {
+      tickets.filter(t => 
+        new Date(t.createdAt) >= (timeRange.startTime || new Date(0)) &&
+        new Date(t.createdAt) <= (timeRange.endTime || new Date())
+      );
+    }
+
+    const totalTickets = tickets.length;
+    const openTickets = tickets.filter(t => t.status === 'open').length;
+    const closedTickets = tickets.filter(t => t.status === 'closed').length;
+    const resolvedTickets = tickets.filter(t => t.status === 'closed' && t.resolvedAt);
+
+    const priorityBreakdown = tickets.reduce((acc, t) => {
+      const priority = t.priority;
+      acc[priority] = (acc[priority] || 0) + 1;
+      return acc;
+    }, {
+      'low': 0,
+      'medium': 0,
+      'high': 0,
+      'critical': 0,
+    });
+
+    const averageResolutionTime = resolvedTickets.length > 0
+      ? resolvedTickets.reduce((sum, t) => {
+          const resolutionTime = t.resolvedAt && t.createdAt 
+            ? new Date(t.resolvedAt).getTime() - new Date(t.createdAt).getTime()
+            : 0;
+          return sum + resolutionTime;
+        }, 0) / resolvedTickets.length
+      : 0;
+
+    const successRate = totalTickets > 0 ? (resolvedTickets.length / totalTickets) * 100 : 0;
+
+    const popularIssues = tickets
+      .reduce((acc, t) => {
+        const existing = acc.find(item => item.title === t.title);
+        if (existing) {
+          existing.count += 1;
+          existing.lastOccurrence = t.createdAt;
+        } else {
+          acc.push({
+            title: t.title,
+            count: 1,
+            lastOccurrence: t.createdAt
+          });
+        }
+        return acc;
+      }, [] as Array<{ title: string; count: number; lastOccurrence: string }>)
+      .sort((a, b) => new Date(b.lastOccurrence).getTime() - new Date(a.lastOccurrence).getTime())
+      .slice(0, 10);
+
+    return {
+      totalTickets,
+      openTickets,
+      closedTickets,
+      averageResolutionTime,
+      priorityBreakdown,
+      successRate,
+      popularIssues,
+    };
+  }
+
+  // HELP REQUESTS MANAGEMENT
+  async createHelpRequest(helpRequestData: Omit<HelpRequest, 'id' | 'createdAt' | 'updatedAt'>): Promise<HelpRequest> {
+    const helpRequest: HelpRequest = {
+      id: crypto.randomUUID(),
+      ...helpRequestData,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.helpRequests.set(helpRequest.id, helpRequest);
+
+    loggingService.info('Help request created', {
+      requestId: helpRequest.id,
+      userId: helpRequest.userId,
+    }, {
+      business: {
+        action: 'help_request_created',
+        result: 'success',
+      },
+    });
+
+    return helpRequest;
+  }
+
+  async getHelpRequests(filter?: {
+    userId?: string;
+    category?: string;
+    status?: string;
+    priority?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<HelpRequest[]> {
+    let helpRequests = Array.from(this.helpRequests.values());
+
+    if (filter) {
+      if (filter.userId) {
+        helpRequests = helpRequests.filter(hr => hr.userId === filter.userId);
+      }
+      if (filter.category) {
+        helpRequests = helpRequests.filter(hr => hr.category === filter.category);
+      }
+      if (filter.status) {
+        helpRequests = helpRequests.filter(hr => (hr as any).status === filter.status);
+      }
+      if (filter.priority) {
+        helpRequests = helpRequests.filter(hr => (hr as any).priority === filter.priority);
+      }
+      if (filter.offset) {
+        helpRequests = helpRequests.slice(filter.offset);
+      }
+      if (filter.limit) {
+        helpRequests = helpRequests.slice(0, filter.limit);
+      }
+    }
+
+    // Sort by creation date (newest first)
+    helpRequests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return helpRequests;
+  }
+
+  async getHelpRequest(helpRequestId: string): Promise<HelpRequest | null> {
+    return this.helpRequests.get(helpRequestId) || null;
+  }
+
+  async updateHelpRequest(helpRequestId: string, updates: Partial<Omit<HelpRequest, 'id' | 'createdAt' | 'updatedAt'>>): Promise<HelpRequest | null> {
+    const helpRequest = this.helpRequests.get(helpRequestId);
+    if (!helpRequest) return null;
+
+    const updatedHelpRequest = {
+      ...helpRequest,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.helpRequests.set(helpRequestId, updatedHelpRequest);
+
+    loggingService.info('Help request updated', {
+      helpRequestId,
+      userId: helpRequest.userId,
+    }, {
+      business: {
+        action: 'help_request_updated',
+        result: 'success',
+      },
+    });
+
+    return updatedHelpRequest;
+  }
+
+  async closeHelpRequest(helpRequestId: string, userId: string): Promise<boolean> {
+    const helpRequest = this.helpRequests.get(helpRequestId);
+    if (!helpRequest || helpRequest.userId !== userId) {
+      return false;
+    }
+
+    const closedHelpRequest = {
+      ...helpRequest,
+      status: 'closed' as any,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.helpRequests.set(helpRequestId, closedHelpRequest);
+
+    loggingService.info('Help request closed', {
+      helpRequestId,
+      userId: helpRequest.userId,
+    }, {
+      business: {
+        action: 'help_request_closed',
+        result: 'success',
+      },
+    });
+
+    return true;
+  }
+
+  async respondToHelpRequest(helpRequestId: string, response: string, userId: string): Promise<boolean> {
+    const helpRequest = this.helpRequests.get(helpRequestId);
+    if (!helpRequest || helpRequest.userId !== userId) {
+      return false;
+    }
+
+    const respondedHelpRequest = {
+      ...helpRequest,
+      response,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.helpRequests.set(helpRequestId, respondedHelpRequest);
+
+    loggingService.info('Help request responded', {
+      helpRequestId,
+      userId: helpRequest.userId,
+      response,
+    }, {
+      business: {
+        action: 'help_request_responded',
+        result: 'success',
+      },
+    });
+
+    return true;
+  }
+
+  async getHelpResponses(helpRequestId: string): Promise<Array<{
+    response: string;
+    createdAt: string;
+    respondedBy: string;
+  }>> {
+    const helpRequest = this.helpRequests.get(helpRequestId);
+    if (!helpRequest) {
+      return [];
+    }
+
+    // Return single response if it exists
+    if (helpRequest.response) {
+      return [{
+        response: helpRequest.response,
+        createdAt: helpRequest.updatedAt,
+        respondedBy: 'system',
+      }];
+    }
+
+    return [];
+  }
+
+  // IN-APP HELP SYSTEM
+  private startInAppHelpSystem(): void {
+    // Start help system monitoring
+    setInterval(async () => {
+      try {
+        await this.checkHelpRequests();
+        await this.generateHelpSuggestions();
+      } catch (error) {
+        loggingService.error('In-app help system error', {}, {
+          error: {
+            name: error instanceof Error ? error.name : 'HelpSystemError',
+            message: error instanceof Error ? error.message : 'Unknown error',
+          },
+        });
+      }
+    }, 60000); // Check every minute
+  }
+
+  // Check for pending help requests
+  private async checkHelpRequests(): Promise<void> {
+    const pendingRequests = Array.from(this.helpRequests.values())
+      .filter(hr => !hr.response || hr.response.trim() === '');
+    
+    if (pendingRequests.length > 0) {
+      loggingService.info('Pending help requests found', {
+        count: pendingRequests.length,
+      });
+    }
+  }
+
+  // Generate help suggestions based on common issues
+  private async generateHelpSuggestions(): Promise<void> {
+    // This would analyze common issues and generate help suggestions
+    // In production, use ML-based issue detection
+    loggingService.info('Generated help suggestions', {});
+  }
+
+  // API METHODS
+  async getHelpSuggestions(filter?: {
+    category?: string;
+    limit?: number;
+  }): Promise<Array<{
+    title: string;
+    description: string;
+    category: string;
+    priority: 'medium';
+    tags: string[];
+  }>> {
+    // This would return help suggestions based on current issues
+    return [];
+  }
+
+  // ANALYTICS
+  async getHelpAnalytics(timeRange?: {
+    startTime?: Date;
+    endTime?: Date;
+  }): Promise<{
+    totalRequests: number;
+    resolvedRequests: number;
+    averageResponseTime: number;
+    successRate: number;
+    popularCategories: Array<{
+      category: string;
+      count: number;
+      successRate: number;
+    }>;
+  }> {
+    const helpRequests = Array.from(this.helpRequests.values());
+
+    let filteredRequests = helpRequests;
+
+    if (timeRange) {
+      filteredRequests = helpRequests.filter(hr => 
+        new Date(hr.createdAt) >= (timeRange.startTime || new Date(0)) &&
+        new Date(hr.createdAt) <= (timeRange.endTime || new Date())
+      );
+    }
+
+    const totalRequests = filteredRequests.length;
+    const resolvedRequests = filteredRequests.filter(hr => hr.response && hr.response.trim() !== '');
+    
+    const averageResponseTime = resolvedRequests.length > 0
+      ? resolvedRequests.reduce((sum, hr) => {
+          const responseTime = hr.updatedAt && hr.createdAt
+            ? new Date(hr.updatedAt).getTime() - new Date(hr.createdAt).getTime()
+            : 0;
+          return sum + responseTime;
+        }, 0) / resolvedRequests.length
+      : 0;
+
+    const successRate = totalRequests > 0 ? (resolvedRequests.length / totalRequests) * 100 : 0;
+
+    const categoryBreakdown = filteredRequests.reduce((acc, hr) => {
+      const category = hr.category || 'general';
+      acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const popularCategories = Object.entries(categoryBreakdown)
+      .map(([category, count]) => {
+        const categoryRequests = filteredRequests.filter(hr => hr.category === category);
+        const resolved = categoryRequests.filter(hr => hr.response && hr.response.trim() !== '');
+        return {
+          category,
+          count,
+          successRate: count > 0 ? (resolved.length / count) * 100 : 0,
+        };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return {
+      totalRequests,
+      resolvedRequests: resolvedRequests.length,
+      averageResponseTime,
+      successRate,
+      popularCategories,
+    };
+  }
+
+  // CUSTOMER SUPPORT
+  private async createCustomSupportTicket(helpRequest: HelpRequest): Promise<string> {
+    const customSupportId = `custom-${crypto.randomUUID()}`;
+    
+    // Create custom support ticket
+    const ticket = await this.createTicket({
+      userId: helpRequest.userId,
+      title: helpRequest.query,
+      description: helpRequest.question,
+      category: helpRequest.category,
+      priority: 'medium',
+      issueType: 'question',
+    });
+
+    // Assign to support team based on category and priority
+    const assignedTeam = this.assignToSupportTeam(helpRequest);
+    
+    loggingService.info('Custom support ticket created', {
+      customSupportId,
+      userId: helpRequest.userId,
+    }, {
+      business: {
+        action: 'custom_support_created',
+        result: 'success',
+      },
+    });
+
+    return customSupportId;
+  }
+
+  private assignToSupportTeam(helpRequest: HelpRequest): string {
+    // This would assign to appropriate support team based on category and priority
+    const teamId = this.getTeamForCategory(helpRequest.category);
+    
+    if (!teamId) {
+      throw new Error('No support team available for this category');
+    }
+
+    this.updateHelpRequest(helpRequest.id, {
+      assignedTo: teamId,
+      assignedAt: new Date().toISOString(),
+    });
+
+    loggingService.info('Custom support ticket assigned', {
+      helpRequestId: helpRequest.id,
+      userId: helpRequest.userId,
+      teamId,
+      assignedAt: new Date().toISOString(),
+    }, {
+      business: {
+        action: 'custom_support_assigned',
+        result: 'success',
+      },
+    });
+
+    return teamId;
+  }
+
+  private getTeamForCategory(category: string): string | null {
+    // This would map categories and priorities to support teams
+    const categoryTeamMap: Record<string, string> = {
+      'general': 'general-support',
+      'drug_specific': 'pharmacy-support',
+      'usage_help': 'medical-support',
+      'interaction_check': 'safety-support',
+      'dosage_help': 'medical-support',
+      'allergy_help': 'safety-support',
+      'backup_help': 'technical-support',
+      'export_help': 'technical-support',
+      'update_help': 'technical-support',
+      'account_help': 'account-support',
+      'security_help': 'security-support',
+      'technical_support': 'technical-support',
+    };
+
+    return categoryTeamMap[category] || 'general-support';
+  }
+
+  // CUSTOMER SUPPORT AUTOMATION
+  private async processCustomSupportTicket(helpRequestId: string): Promise<void> {
+    const helpRequest = this.helpRequests.get(helpRequestId);
+    if (!helpRequest) return;
+
+    // Process custom support ticket
+    try {
+      // This would integrate with custom support systems
+      const result = await this.processWithCustomSupport(helpRequest);
+      
+      // Update ticket status
+      loggingService.info('Custom support ticket processed', {
+        helpRequestId,
+        result,
+      });
+    } catch (error) {
+      loggingService.error('Failed to process custom support ticket', {
+        helpRequestId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  private async processWithCustomSupport(helpRequest: HelpRequest): Promise<string> {
+    // This would integrate with external support systems
+    // For now, return a placeholder result
+    return 'Processed successfully';
+  }
+
+  // Initialize default data
+  private initializeDefaultData(): void {
+    // Initialize with sample data if needed
+    loggingService.info('UserReviewsService initialized', {});
+  }
+
+  // Start metrics collection
+  private startMetricsCollection(): void {
+    // Start periodic metrics collection
+    setInterval(async () => {
+      try {
+        const reviewStats = await this.getReviewAnalytics();
+        const questionStats = await this.getQuestionAnalytics();
+        const ticketStats = await this.getTicketAnalytics();
+        const helpStats = await this.getHelpAnalytics();
+        
+        loggingService.info('Metrics collected', {
+          reviews: reviewStats.totalReviews,
+          questions: questionStats.totalQuestions,
+          tickets: ticketStats.totalTickets,
+          helpRequests: helpStats.totalRequests,
+        });
+      } catch (error) {
+        loggingService.error('Failed to collect metrics', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }, 300000); // Every 5 minutes
+  }
+
+  // Additional analytics methods
+  async getReviewAnalytics(timeRange?: {
+    startTime?: Date;
+    endTime?: Date;
+  }): Promise<{
+    totalReviews: number;
+    averageRating: number;
+    ratingDistribution: Record<string, number>;
+  }> {
+    const reviews = Array.from(this.reviews.values());
+    
+    let filteredReviews = reviews;
+    if (timeRange) {
+      filteredReviews = reviews.filter(r => 
+        new Date(r.createdAt) >= (timeRange.startTime || new Date(0)) &&
+        new Date(r.createdAt) <= (timeRange.endTime || new Date())
+      );
+    }
+
+    const totalReviews = filteredReviews.length;
+    const averageRating = totalReviews > 0 
+      ? filteredReviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews 
+      : 0;
+
+    const ratingDistribution = filteredReviews.reduce((acc, r) => {
+      const ratingKey = r.rating === 1 ? 'very_poor' 
+        : r.rating === 2 ? 'poor' 
+        : r.rating === 3 ? 'average' 
+        : r.rating === 4 ? 'good' 
+        : r.rating === 5 ? 'very_good' 
+        : 'excellent';
+      
+      acc[ratingKey] = (acc[ratingKey] || 0) + 1;
+      return acc;
+    }, {
+      'very_poor': 0,
+      'poor': 0,
+      'average': 0,
+      'good': 0,
+      'very_good': 0,
+      'excellent': 0,
+    });
+
+    return {
+      totalReviews,
+      averageRating,
+      ratingDistribution,
+    };
+  }
+}

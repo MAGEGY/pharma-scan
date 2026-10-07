@@ -8,6 +8,7 @@ import HomeScreen from "@/screens/HomeScreen";
 import HistoryScreen from "@/screens/HistoryScreen";
 import LibraryScreen from "@/screens/LibraryScreen";
 import ProfileScreen from "@/screens/ProfileScreen";
+import AdvancedFeatures from "@/components/AdvancedFeatures";
 import { useTheme } from "@/hooks/useTheme";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { Spacing, BorderRadius, Shadows } from "@/constants/theme";
@@ -18,6 +19,7 @@ export type MainTabParamList = {
   History: undefined;
   Library: undefined;
   Profile: undefined;
+  Advanced: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -57,7 +59,6 @@ export default function MainTabNavigator({ navigation }: any) {
       <Tab.Navigator
         initialRouteName="Home"
         screenOptions={{
-          ...screenOptions,
           tabBarActiveTintColor: theme.primary,
           tabBarInactiveTintColor: theme.tabIconDefault,
           tabBarStyle: {
@@ -77,6 +78,7 @@ export default function MainTabNavigator({ navigation }: any) {
                 style={StyleSheet.absoluteFill}
               />
             ) : null,
+          headerShown: false,
         }}
       >
         <Tab.Screen
@@ -116,6 +118,17 @@ export default function MainTabNavigator({ navigation }: any) {
             headerTitle: "Profile",
             tabBarIcon: ({ color, size }) => (
               <Feather name="user" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Advanced"
+          component={AdvancedFeatures}
+          options={{
+            headerShown: true,
+            headerTitle: "Advanced Features",
+            tabBarIcon: ({ color, size }) => (
+              <Feather name="shield" size={size} color={color} />
             ),
           }}
         />

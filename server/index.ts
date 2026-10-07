@@ -196,6 +196,7 @@ function configureExpoAndLanding(app: express.Application) {
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
+  app.use(express.static(path.resolve(process.cwd())));
 
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
@@ -233,7 +234,8 @@ function setupErrorHandler(app: express.Application) {
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
+      // reusePort is not supported on Windows
+      ...(process.platform !== 'win32' && { reusePort: true }),
     },
     () => {
       log(`express server serving on port ${port}`);

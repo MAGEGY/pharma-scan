@@ -1,7 +1,56 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import OpenAI from "openai";
-import { EGYPTIAN_DRUGS } from "./egyptianDrugs";
+import { mockDrugService } from "./mockDrugService";
+import { EgyptianDrug } from "../shared/schema";
+import {
+  updateDrugPrice,
+  bulkUpdatePrices,
+  getPriceHistory,
+  getPriceStatistics,
+  getPriceTrends,
+  getRecentPriceChanges,
+  verifyDrugPrice,
+  getUnverifiedPrices,
+  getPriceChangesByDateRange,
+} from "./priceRoutes";
+import {
+  searchTarshouby,
+  getTarshoubyProductDetails,
+  updatePriceFromTarshouby,
+  bulkUpdatePricesFromTarshouby,
+  getTarshoubyHealth,
+  comparePrices,
+} from "./tarshoubyRoutes";
+import {
+  authenticate,
+  optionalAuthenticate,
+  requirePremium,
+  requireEmailVerification,
+  rateLimit,
+  securityHeaders,
+  requestLogger,
+  errorHandler,
+} from "./authMiddleware";
+import {
+  register,
+  login,
+  refreshToken,
+  logout,
+  logoutAll,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+  getProfile,
+  getSessions,
+  verifyEmail,
+} from "./authRoutes";
+import advancedFeaturesRoutes from "./advancedFeaturesRoutes";
+import externalInteractionRoutes from "./externalInteractionRoutes";
+import backupSyncRoutes from "./backupSyncRoutes";
+// import userReviewsRoutes from "./userReviewsRoutes"; // Temporarily disabled due to syntax errors
+import { cacheMiddleware, CacheManager } from "./cache";
+import ImageOptimizer, { IMAGE_CONFIGS, ImageUtils } from "./imageOptimizer";
 
 interface PharmacyResult {
   pharmacy: string;
@@ -31,43 +80,48 @@ function generatePharmacyLinks(medicineName: string): PharmacyResult[] {
   ];
 }
 
-function findNearestMatch(name: string): { match: typeof EGYPTIAN_DRUGS[0] | null; similarity: number } {
+async function findNearestMatch(name: string): Promise<{ match: EgyptianDrug | null; similarity: number }> {
   const normalizedName = name.toLowerCase().trim();
-  let bestMatch: typeof EGYPTIAN_DRUGS[0] | null = null;
-  let bestSimilarity = 0;
-
-  for (const drug of EGYPTIAN_DRUGS) {
-    const drugName = drug.name.toLowerCase();
-    const drugArabic = drug.nameArabic.toLowerCase();
-
-    if (drugName === normalizedName || drugArabic === normalizedName) {
-      return { match: drug, similarity: 1.0 };
+  
+  try {
+    // First try exact match
+    const exactMatch = await mockDrugService.searchDrugByName(name);
+    if (exactMatch) {
+      return { match: exactMatch, similarity: 1.0 };
     }
+    
+    // If no exact match, try partial matches
+    const allDrugs = await mockDrugService.getAllDrugs(1000, 0); // Get first 1000 for matching
+    let bestMatch: EgyptianDrug | null = null;
+    let bestSimilarity = 0;
 
-    if (drugName.startsWith(normalizedName) || normalizedName.startsWith(drugName)) {
-      const similarity = 0.9;
-      if (similarity > bestSimilarity) {
-        bestSimilarity = similarity;
-        bestMatch = drug;
+    for (const drug of allDrugs) {
+      const drugName = drug.name.toLowerCase();
+      const drugArabic = drug.nameArabic.toLowerCase();
+
+      if (drugName.startsWith(normalizedName) || normalizedName.startsWith(drugName)) {
+        const similarity = 0.9;
+        if (similarity > bestSimilarity) {
+          bestSimilarity = similarity;
+          bestMatch = drug;
+        }
+      }
+
+      // Check for partial substring matches
+      if (drugName.includes(normalizedName) || normalizedName.includes(drugName)) {
+        const similarity = 0.7;
+        if (similarity > bestSimilarity) {
+          bestSimilarity = similarity;
+          bestMatch = drug;
+        }
       }
     }
-
-    if (drugName.includes(normalizedName) || normalizedName.includes(drugName)) {
-      const similarity = 0.75;
-      if (similarity > bestSimilarity) {
-        bestSimilarity = similarity;
-        bestMatch = drug;
-      }
-    }
-
-    const levenshteinSim = 1 - levenshteinDistance(normalizedName, drugName) / Math.max(normalizedName.length, drugName.length);
-    if (levenshteinSim > bestSimilarity && levenshteinSim >= 0.7) {
-      bestSimilarity = levenshteinSim;
-      bestMatch = drug;
-    }
-  }
 
   return { match: bestMatch, similarity: bestSimilarity };
+  } catch (error) {
+    console.error('Error finding nearest match:', error);
+    return { match: null, similarity: 0 };
+  }
 }
 
 function levenshteinDistance(a: string, b: string): number {
@@ -97,34 +151,17 @@ function levenshteinDistance(a: string, b: string): number {
   return matrix[b.length][a.length];
 }
 
-function findAlternatives(activeIngredient: string | undefined, category: string | undefined, excludeName: string): typeof EGYPTIAN_DRUGS {
-  if (activeIngredient) {
-    const normalizedIngredient = activeIngredient.toLowerCase();
-    const byIngredient = EGYPTIAN_DRUGS.filter(
-      (drug) =>
-        drug.activeIngredient && 
-        drug.activeIngredient.toLowerCase().includes(normalizedIngredient) &&
-        drug.name.toLowerCase() !== excludeName.toLowerCase()
-    );
-    if (byIngredient.length > 0) return byIngredient.slice(0, 5);
-  }
-  
-  if (category) {
-    return EGYPTIAN_DRUGS.filter(
-      (drug) =>
-        drug.category && 
-        drug.category.toLowerCase() === category.toLowerCase() &&
-        drug.name.toLowerCase() !== excludeName.toLowerCase()
-    ).slice(0, 3);
-  }
-  
-  return [];
+async function findAlternatives(activeIngredient: string | undefined, category: string | undefined, excludeName: string): Promise<EgyptianDrug[]> {
+  return await mockDrugService.findAlternatives(excludeName, activeIngredient, category, 5);
 }
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+const openai = process.env.AI_INTEGRATIONS_OPENAI_API_KEY && 
+  process.env.AI_INTEGRATIONS_OPENAI_API_KEY !== 'your-openai-api-key-placeholder'
+  ? new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    })
+  : null;
 
 interface Medicine {
   name: string;
@@ -140,14 +177,61 @@ interface Recommendation {
   recommendations?: string[];
 }
 
-export async function registerRoutes(app: Express): Promise<Server> {
-  app.post("/api/analyze-prescription", async (req: Request, res: Response) => {
+export function registerRoutes(app: Express): Server {
+  // Apply global middleware
+  app.use(securityHeaders);
+  app.use(requestLogger);
+  app.use(rateLimit(100, 15 * 60 * 1000)); // 100 requests per 15 minutes
+
+  // Authentication Routes
+  app.post("/api/auth/register", rateLimit(5, 15 * 60 * 1000), register); // 5 registrations per 15 minutes
+  app.post("/api/auth/login", rateLimit(10, 15 * 60 * 1000), login); // 10 login attempts per 15 minutes
+  app.post("/api/auth/refresh", refreshToken);
+  app.post("/api/auth/logout", authenticate, logout);
+  app.post("/api/auth/logout-all", authenticate, logoutAll);
+  app.post("/api/auth/forgot-password", rateLimit(3, 15 * 60 * 1000), forgotPassword); // 3 password resets per 15 minutes
+  app.post("/api/auth/reset-password", resetPassword);
+  app.post("/api/auth/change-password", authenticate, changePassword);
+  app.get("/api/auth/profile", authenticate, getProfile);
+  app.get("/api/auth/sessions", authenticate, getSessions);
+  app.get("/api/auth/verify-email", verifyEmail);
+
+  // Protected Routes (require authentication)
+  app.post("/api/analyze-prescription", authenticate, async (req: Request, res: Response) => {
     try {
+      if (!openai) {
+        return res.status(503).json({ 
+          error: "AI service unavailable", 
+          message: "OpenAI API key not configured" 
+        });
+      }
+
       const { image } = req.body;
 
       if (!image) {
         return res.status(400).json({ error: "Image is required" });
       }
+
+      // Optimize image for OCR processing
+      const imageOptimizer = ImageOptimizer.getInstance();
+      const imageBuffer = ImageUtils.base64ToBuffer(image);
+      
+      // Validate image first
+      const isValidImage = await imageOptimizer.validateImage(imageBuffer);
+      if (!isValidImage) {
+        return res.status(400).json({ error: "Invalid image format" });
+      }
+
+      // Optimize for OCR analysis
+      const optimizedResult = await imageOptimizer.optimizeImage(
+        imageBuffer, 
+        IMAGE_CONFIGS.ocr
+      );
+      
+      console.log(`Image optimized: ${ImageUtils.formatFileSize(optimizedResult.metadata.originalSize)} → ${ImageUtils.formatFileSize(optimizedResult.metadata.optimizedSize)} (${(optimizedResult.metadata.compressionRatio * 100).toFixed(1)}% reduction)`);
+
+      // Use optimized image for OCR
+      const optimizedImage = ImageUtils.bufferToBase64(optimizedResult.buffer, 'image/jpeg');
 
       const ocrResponse = await openai.chat.completions.create({
         model: "gpt-4.1",
@@ -182,7 +266,7 @@ Always respond with valid JSON only.`,
               {
                 type: "image_url",
                 image_url: {
-                  url: `data:image/jpeg;base64,${image}`,
+                  url: optimizedImage,
                 },
               },
               {
@@ -248,7 +332,9 @@ Be accurate with Egyptian brand names and their formulations. Respond with valid
       }
 
       // Step 3: Get clinical recommendations using composition data (Meditron-style AI)
-      const drugNames = EGYPTIAN_DRUGS.map((d) => d.name).join(", ");
+      // Get a sample of drug names for the AI context
+      const sampleDrugs = await mockDrugService.getAllDrugs(1000, 0);
+      const drugNames = sampleDrugs.map((d) => d.name).join(", ");
       
       const recommendationsResponse = await openai.chat.completions.create({
         model: "gpt-4.1",
@@ -306,30 +392,26 @@ Respond with valid JSON only.`,
         }));
       }
 
-      const enrichedMedicines = medicines.map((med, idx) => {
+      const enrichedMedicines = await Promise.all(medicines.map(async (med, idx) => {
         const compMatch = compositionData.find(
           (c: any) => c.name?.toLowerCase() === med.name.toLowerCase()
         );
         
-        const exactMatch = EGYPTIAN_DRUGS.find(
-          (d) =>
-            d.name.toLowerCase() === med.name.toLowerCase() ||
-            d.nameArabic === med.nameArabic
-        );
+        const exactMatch = await mockDrugService.searchDrugByName(med.name);
 
         let verificationStatus: "verified" | "suggested" | "unverified" = "unverified";
-        let suggestedMatch: typeof EGYPTIAN_DRUGS[0] | null = null;
-        let alternatives: typeof EGYPTIAN_DRUGS = [];
+        let suggestedMatch: EgyptianDrug | null = null;
+        let alternatives: EgyptianDrug[] = [];
 
         if (exactMatch) {
           verificationStatus = "verified";
-          alternatives = findAlternatives(exactMatch.activeIngredient, exactMatch.category, exactMatch.name);
+          alternatives = await findAlternatives(exactMatch.activeIngredient || undefined, exactMatch.category || undefined, exactMatch.name);
         } else {
-          const { match, similarity } = findNearestMatch(med.name);
+          const { match, similarity } = await findNearestMatch(med.name);
           if (match && similarity >= 0.7) {
             verificationStatus = "suggested";
             suggestedMatch = match;
-            alternatives = findAlternatives(match.activeIngredient, match.category, match.name);
+            alternatives = await findAlternatives(match.activeIngredient || undefined, match.category || undefined, match.name);
           }
         }
 
@@ -337,7 +419,7 @@ Respond with valid JSON only.`,
         const category = compMatch?.therapeuticClass || exactMatch?.category || suggestedMatch?.category;
         
         if (alternatives.length === 0) {
-          alternatives = findAlternatives(activeIngredient, category, med.name);
+          alternatives = await findAlternatives(activeIngredient, category, med.name);
         }
 
         return {
@@ -360,7 +442,7 @@ Respond with valid JSON only.`,
             dosing: alt.dosing,
           })),
         };
-      });
+      }));
 
       res.json({
         medicines: enrichedMedicines,
@@ -387,9 +469,7 @@ Respond with valid JSON only.`,
 
       const pharmacyLinks = generatePharmacyLinks(medicineName);
 
-      const drugInfo = EGYPTIAN_DRUGS.find(
-        (d) => d.name.toLowerCase() === medicineName.toLowerCase()
-      );
+      const drugInfo = await mockDrugService.searchDrugByName(medicineName);
 
       let imageUrl: string | null = null;
       let productDescription: string | null = null;
@@ -495,53 +575,32 @@ Respond with valid JSON only.`,
     return { matches: false, score: 0 };
   }
 
-  app.get("/api/drugs", (req: Request, res: Response) => {
+  app.get("/api/drugs", cacheMiddleware.drugs, async (req: Request, res: Response) => {
     try {
-      const search = (req.query.search as string || "").toLowerCase().trim();
+      const search = (req.query.search as string || "").trim();
       const category = (req.query.category as string || "All");
       const page = parseInt(req.query.page as string) || 1;
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
       const offset = (page - 1) * limit;
 
-      let filteredDrugs = EGYPTIAN_DRUGS;
-      let scoredDrugs: Array<{ drug: typeof EGYPTIAN_DRUGS[0]; score: number }> = [];
+      let drugs: EgyptianDrug[];
 
-      if (search) {
-        for (const drug of EGYPTIAN_DRUGS) {
-          let bestScore = 0;
-          
-          const nameMatch = fuzzyMatch(drug.name, search);
-          if (nameMatch.matches) bestScore = Math.max(bestScore, nameMatch.score);
-          
-          const arabicMatch = fuzzyMatch(drug.nameArabic || '', search);
-          if (arabicMatch.matches) bestScore = Math.max(bestScore, arabicMatch.score);
-          
-          const ingredientMatch = fuzzyMatch(drug.activeIngredient || '', search);
-          if (ingredientMatch.matches) bestScore = Math.max(bestScore, ingredientMatch.score * 0.9);
-          
-          const descMatch = fuzzyMatch(drug.descriptionEnglish || '', search);
-          if (descMatch.matches) bestScore = Math.max(bestScore, descMatch.score * 0.7);
-          
-          if (bestScore > 0) {
-            scoredDrugs.push({ drug, score: bestScore });
-          }
-        }
-        
-        scoredDrugs.sort((a, b) => b.score - a.score);
-        filteredDrugs = scoredDrugs.map(s => s.drug);
+      if (search || (category && category !== "All")) {
+        // Use the search service with filters
+        drugs = await mockDrugService.searchDrugs({
+          name: search || undefined,
+          category: category !== "All" ? category : undefined,
+          limit,
+          offset
+        });
+      } else {
+        // Get all drugs with pagination
+        drugs = await mockDrugService.getAllDrugs(limit, offset);
       }
 
-      if (category && category !== "All") {
-        filteredDrugs = filteredDrugs.filter((drug) =>
-          drug.category?.toLowerCase().includes(category.toLowerCase()) ||
-          drug.activeIngredient?.toLowerCase().includes(category.toLowerCase())
-        );
-      }
+      const total = await mockDrugService.getTotalCount();
 
-      const total = filteredDrugs.length;
-      const paginatedDrugs = filteredDrugs.slice(offset, offset + limit);
-
-      const drugs = paginatedDrugs.map((drug) => ({
+      const responseDrugs = drugs.map((drug) => ({
         id: String(drug.id),
         name: drug.name,
         nameArabic: drug.nameArabic || "",
@@ -555,7 +614,7 @@ Respond with valid JSON only.`,
       }));
 
       res.json({
-        drugs,
+        drugs: responseDrugs,
         total,
         page,
         limit,
@@ -567,10 +626,10 @@ Respond with valid JSON only.`,
     }
   });
 
-  app.get("/api/drugs/:id", (req: Request, res: Response) => {
+  app.get("/api/drugs/:id", cacheMiddleware.drugs, async (req: Request, res: Response) => {
     try {
       const drugId = req.params.id;
-      const drug = EGYPTIAN_DRUGS.find((d) => String(d.id) === drugId);
+      const drug = await mockDrugService.getDrugById(parseInt(drugId));
 
       if (!drug) {
         return res.status(404).json({ error: "Drug not found" });
@@ -596,6 +655,74 @@ Respond with valid JSON only.`,
       res.status(500).json({ error: "Failed to fetch drug" });
     }
   });
+
+  // Price Management Endpoints
+  
+  // Update single drug price
+  app.post("/api/drugs/:drugId/price", updateDrugPrice);
+  
+  // Bulk price update
+  app.post("/api/prices/bulk-update", bulkUpdatePrices);
+  
+  // Get price history for a drug
+  app.get("/api/drugs/:drugId/price-history", cacheMiddleware.prices, getPriceHistory);
+  
+  // Get price statistics for a drug
+  app.get("/api/drugs/:drugId/price-statistics", cacheMiddleware.prices, getPriceStatistics);
+  
+  // Get price trends for a drug
+  app.get("/api/drugs/:drugId/price-trends", cacheMiddleware.prices, getPriceTrends);
+  
+  // Get recent price changes
+  app.get("/api/prices/recent-changes", cacheMiddleware.prices, getRecentPriceChanges);
+  
+  // Update drug price with cache invalidation
+  app.post("/api/drugs/:drugId/price", authenticate, async (req: Request, res: Response) => {
+    try {
+      const result = await updateDrugPrice(req, res);
+      
+      // Invalidate relevant caches
+      CacheManager.invalidateDrug(req.params.drugId);
+      CacheManager.invalidatePrices();
+      
+      return result;
+    } catch (error) {
+      console.error("Error updating price:", error);
+      res.status(500).json({ error: "Failed to update price" });
+    }
+  });
+  
+  // Verify price
+  app.put("/api/drugs/:drugId/verify-price", verifyDrugPrice);
+  
+  // Get unverified prices
+  app.get("/api/prices/unverified", cacheMiddleware.prices, getUnverifiedPrices);
+  
+  // Get price changes within date range
+  app.get("/api/prices/changes", getPriceChangesByDateRange);
+
+  // Tarshouby Pharmacy Integration Endpoints
+  app.get("/api/tarshouby/search", searchTarshouby);
+  app.get("/api/tarshouby/product-details", getTarshoubyProductDetails);
+  app.post("/api/tarshouby/update-price", authenticate, updatePriceFromTarshouby);
+  app.post("/api/tarshouby/bulk-update", authenticate, bulkUpdatePricesFromTarshouby);
+  app.get("/api/tarshouby/health", getTarshoubyHealth);
+  app.get("/api/prices/compare", comparePrices);
+
+  // Advanced Features Endpoints
+  app.use("/api/advanced", advancedFeaturesRoutes);
+
+  // Backup & Sync Endpoints
+  app.use("/api/backup-sync", backupSyncRoutes);
+
+  // External Interaction API Endpoints
+  app.use("/api/external", externalInteractionRoutes);
+
+  // User Reviews, Q&A, and Customer Support Endpoints
+  // app.use("/api/community", userReviewsRoutes); // Temporarily disabled due to syntax errors
+
+  // Apply error handling middleware
+  app.use(errorHandler);
 
   const httpServer = createServer(app);
 
