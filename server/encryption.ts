@@ -218,3 +218,7 @@ export const hashField = (value: string): string => {
 export const verifyFieldHash = (value: string, hash: string): boolean => {
   return encryptionService.verifyHash(value, hash);
 };
+
+export const generateChecksum = (data: string): string => {
+  return crypto.createHash('sha256').update(data).digest('hex');
+};
