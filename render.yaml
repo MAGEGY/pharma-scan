@@ -7,6 +7,6 @@ services:
     startCommand: npm run server:prod
     envVars:
       - key: NODE_VERSION
-        value: "20"
+        value: "22"
       - key: EXPO_PUBLIC_DOMAIN
         value: pharmascan.onrender.com
