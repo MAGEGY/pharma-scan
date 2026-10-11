@@ -19,7 +19,7 @@
     "optimize:images": "node scripts/optimize-images.js",
     "bundle:analyze": "npx @expo/webpack-config analyze",
     "bundle:profile": "npx expo start --profile",
-    "build:production": "npm run expo:static:build && npm run server:build",
+    "build:production": "npm run expo:static:build || echo '[warn] Expo Go static build failed - deploying web UI + API without fresh Expo Go manifests' && npm run server:build",
     "start:production": "npm run server:prod",
     "android": "expo run:android",
     "ios": "expo run:ios"

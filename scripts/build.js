@@ -153,7 +153,7 @@ async function startMetro(expoPublicDomain) {
 
 async function downloadFile(url, outputPath) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120_000);
+  const timeoutId = setTimeout(() => controller.abort(), 300_000);
 
   try {
     console.log(`Downloading: ${url}`);
@@ -178,7 +178,7 @@ async function downloadFile(url, outputPath) {
     }
 
     if (error.name === "AbortError") {
-      throw new Error(`Download timeout after 2m: ${url}`);
+      throw new Error(`Download timeout after 5m: ${url}`);
     }
     throw error;
   } finally {
@@ -243,41 +243,21 @@ async function downloadBundlesAndManifests(timestamp) {
   console.log("Downloading bundles and manifests...");
   console.log("This may take several minutes for production builds...");
 
+  // Sequential per-platform downloads: bundling iOS and Android in parallel
+  // doubles peak Metro memory and OOMs on small CI instances.
   try {
-    const results = await Promise.allSettled([
-      downloadBundle("ios", timestamp),
-      downloadBundle("android", timestamp),
-      downloadManifest("ios"),
-      downloadManifest("android"),
-    ]);
+    const iosManifest = await downloadManifest("ios");
+    await downloadBundle("ios", timestamp);
+    console.log("iOS ready");
 
-    const failures = results
-      .map((result, index) => ({ result, index }))
-      .filter(({ result }) => result.status === "rejected");
-
-    if (failures.length > 0) {
-      const errorMessages = failures.map(({ result, index }) => {
-        const names = [
-          "iOS bundle",
-          "Android bundle",
-          "iOS manifest",
-          "Android manifest",
-        ];
-        return `  - ${names[index]}: ${result.reason?.message || result.reason}`;
-      });
-
-      exitWithError(`Download failed:\n${errorMessages.join("\n")}`);
-    }
-
-    const iosManifest =
-      results[2].status === "fulfilled" ? results[2].value : null;
-    const androidManifest =
-      results[3].status === "fulfilled" ? results[3].value : null;
+    const androidManifest = await downloadManifest("android");
+    await downloadBundle("android", timestamp);
+    console.log("Android ready");
 
     console.log("All downloads completed successfully");
     return { ios: iosManifest, android: androidManifest };
   } catch (error) {
-    exitWithError(`Unexpected download error: ${error.message}`);
+    exitWithError(`Download failed: ${error.message}`);
   }
 }
 
@@ -508,7 +488,7 @@ async function main() {
 
   await startMetro(domain);
 
-  const downloadTimeout = 300000;
+  const downloadTimeout = 600000;
   const downloadPromise = downloadBundlesAndManifests(timestamp);
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => {
