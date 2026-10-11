@@ -50,3 +50,6 @@ dev.db
 
 # build output
 server_dist/
+
+# local embedded database files
+data/

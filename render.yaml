@@ -2,9 +2,10 @@ services:
   - type: web
     name: pharmascan
     runtime: node
-    plan: free
-    buildCommand: npm ci && npm run build:production
+    plan: starter
+    buildCommand: npm install --no-audit --no-fund && npm run build:production
     startCommand: npm run server:prod
+    healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
         value: "22"
@@ -12,3 +13,7 @@ services:
         value: --max-old-space-size=3072
       - key: EXPO_PUBLIC_DOMAIN
         value: pharmascan.onrender.com
+    disk:
+      name: pharmascan-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
