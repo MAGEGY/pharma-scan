@@ -47,3 +47,6 @@ dev.db
 .env
 dev.db
 *.db
+
+# build output
+server_dist/
